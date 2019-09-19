@@ -1,0 +1,10 @@
+[package]
+name = "fakeblok"
+version = "0.0.0"
+authors = ["Adam Wright <shaladdle@gmail.com>", "Tim Kuehn <timothy.j.kuehn@gmail.com>"]
+keywords = []
+
+[dependencies]
+piston_window = "0.104.0"
+log = "*"
+pretty_env_logger = "*"
