@@ -1,6 +1,5 @@
-use log::info;
-
 use piston_window::{context::Context, rectangle, types, G2d, Key};
+use serde::{Deserialize, Serialize};
 
 pub type GameInt = u16;
 pub type EntityId = usize;
@@ -13,7 +12,7 @@ const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
 const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Point {
     pub x: GameInt,
     pub y: GameInt,
@@ -85,6 +84,7 @@ impl std::ops::Div<GameInt> for Point {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Game {
     pub bottom_right: Point,
     pub positions: Vec<Rectangle>,
@@ -208,7 +208,6 @@ impl Game {
             &Key::Right => self.move_entity_right(SQUARE_2),
             _ => (),
         }
-        info!("key: {:?}", key);
     }
 
     pub fn tick(&mut self) {
@@ -241,7 +240,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,

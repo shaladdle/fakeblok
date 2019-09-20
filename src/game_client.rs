@@ -1,0 +1,92 @@
+use crate::game;
+use crate::rpc_service;
+use futures::future::TryFutureExt;
+use futures::{channel::mpsc, stream::StreamExt};
+use log::{error, info};
+use piston_window::Input;
+use std::io;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tarpc::client::{self, NewClient};
+use tarpc::context;
+use tokio::runtime::current_thread;
+use tokio::timer::Interval;
+use futures::Future;
+
+pub struct GameClient {
+    game: Arc<Mutex<game::Game>>,
+    inputs: mpsc::UnboundedSender<Input>,
+}
+
+async fn create_client(server_addr: &str) -> io::Result<(rpc_service::GameClient, impl Future<Output=()>)> {
+    let server_addr = match server_addr.parse() {
+        Ok(s) => s,
+        // TODO: Can we also pass the parse error as the detailed error?
+        Err(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Failed to parse server addr into SocketAddr",
+            ))
+        }
+    };
+    let transport = tarpc_json_transport::connect(&server_addr).await?;
+    let NewClient { client, dispatch } =
+        rpc_service::GameClient::new(client::Config::default(), transport);
+    info!("Spawn dispatch");
+    let dispatch = dispatch.unwrap_or_else(move |e| error!("Connection broken: {}", e));
+    info!("Dispatch spawned");
+    Ok((client, dispatch))
+}
+
+async fn push_inputs(
+    mut client: rpc_service::GameClient,
+    mut inputs: mpsc::UnboundedReceiver<Input>,
+) {
+    while let Some(input) = inputs.next().await {
+        info!("push_input({:?})", input);
+        if let Err(err) = client.push_input(context::current(), input.clone()).await {
+            error!("Error setting keys, {:?}: {:?}", input, err);
+        }
+    }
+}
+
+async fn repeated_poll_game_state(
+    mut client: rpc_service::GameClient,
+    game: Arc<Mutex<game::Game>>,
+) {
+    while let Some(_) = Interval::new_interval(Duration::from_millis(100))
+        .next()
+        .await
+    {
+        match client.poll_game_state(context::current()).await {
+            Ok(new_game) => *game.lock().unwrap() = new_game,
+            Err(err) => error!("Error polling game state: {:?}", err),
+        }
+    }
+}
+
+impl GameClient {
+    pub fn new(server_addr: &str) -> io::Result<GameClient> {
+        info!("Creating runtime");
+        let mut runtime = current_thread::Runtime::new().unwrap();
+        info!("Creating client to {}", server_addr);
+        let (mut client, dispatch) = runtime.block_on(create_client(server_addr))?;
+        tokio::spawn(dispatch);
+        info!("Getting initial game state:");
+        let game = runtime.block_on(client.poll_game_state(context::current()))?;
+        let game = Arc::new(Mutex::new(game));
+        info!("Successfully created new GameClient");
+        let (inputs, rx) = mpsc::unbounded();
+        tokio::spawn(repeated_poll_game_state(client.clone(), game.clone()));
+        tokio::spawn(push_inputs(client, rx));
+        Ok(GameClient { game, inputs })
+    }
+
+    pub fn push_input(&mut self, input: Input) {
+        self.inputs.unbounded_send(input).unwrap();
+    }
+
+    pub fn get_game(&mut self) -> Arc<Mutex<game::Game>> {
+        self.game.clone()
+    }
+}
