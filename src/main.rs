@@ -4,9 +4,11 @@ extern crate pretty_env_logger;
 
 use log::info;
 use piston_window::{
-    clear, context::Context, math, rectangle, Button, ButtonArgs, ButtonState, Event,
+    clear, context::Context, rectangle, types::Rectangle, Button, ButtonArgs, ButtonState, Event,
     EventLoop, G2d, Input, Key, OpenGL, PistonWindow, WindowSettings,
 };
+
+const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
 type GameInt = u16;
 
@@ -95,7 +97,9 @@ impl Game {
 
     fn draw(&mut self, c: Context, g: &mut G2d) {
         for entity in self.entities() {
-            entity.draw(c, g, self.bottom_right);
+            entity.draw(self.bottom_right, &mut |rect| {
+                rectangle(BLACK, rect, c.transform, g);
+            });
         }
     }
 
@@ -139,8 +143,7 @@ impl MyRectangle {
         self.top_left.y = (self.top_left.y + diff) % height;
     }
 
-    fn draw(&self, c: Context, g: &mut G2d, bottom_right: Point) {
-        let black = [0.0, 0.0, 0.0, 1.0];
+    fn draw(&self, bottom_right: Point, drawer: &mut impl FnMut(Rectangle)) {
         let my_bottom_right = self.bottom_right();
         if my_bottom_right.is_below(bottom_right) {
             let bottom_overflow = my_bottom_right.y - bottom_right.y;
@@ -152,7 +155,7 @@ impl MyRectangle {
                 width: self.width,
                 height: bottom_overflow,
             }
-            .draw(c, g, bottom_right);
+            .draw(bottom_right, drawer);
         }
         if my_bottom_right.is_right_of(bottom_right) {
             let right_overflow = my_bottom_right.x - bottom_right.x;
@@ -164,18 +167,14 @@ impl MyRectangle {
                 width: right_overflow,
                 height: self.height,
             }
-            .draw(c, g, bottom_right);
+            .draw(bottom_right, drawer);
         }
-        let rect = math::margin_rectangle(
-            [
+        drawer([
                 f64::from(self.top_left.x),
                 self.top_left.y.into(),
                 self.width.min(bottom_right.x - self.top_left.x).into(),
                 self.height.min(bottom_right.y - self.top_left.y).into(),
-            ],
-            5.0,
-        );
-        rectangle(black, rect, c.transform, g);
+            ]);
     }
 
     fn bottom_right(&self) -> Point {
@@ -226,22 +225,39 @@ fn main() {
 }
 
 #[test]
-fn wrap_in_range_does_nothing() {
-    assert_eq!(wrap(0, 200), 0);
-    assert_eq!(wrap(199, 200), 199);
-    assert_eq!(wrap(100, 200), 100);
+fn my_rectangle_draw_no_overflow() {
+    let rect = MyRectangle {
+        top_left: Point { x: 5, y: 5 },
+        width: 5,
+        height: 5,
+    };
+    let mut expected_recs = vec![[5., 5., 5., 5.]];
+    rect.draw(Point { x: 10, y: 10 }, &mut |r| {
+        for (i, rec) in expected_recs.iter().enumerate() {
+            if rec == &r {
+                expected_recs.remove(i);
+                return
+            }
+        }
+        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
+    });
 }
 
 #[test]
-fn wrap_negative() {
-    assert_eq!(wrap(-7, 200), 193);
-    assert_eq!(wrap(-100, 200), 100);
-    assert_eq!(wrap(-300, 200), 100);
-}
-
-#[test]
-fn wrap_positive() {
-    assert_eq!(wrap(210, 200), 10);
-    assert_eq!(wrap(520, 200), 120);
-    assert_eq!(wrap(201, 200), 1);
+fn my_rectangle_draw_overflow() {
+    let rect = MyRectangle {
+        top_left: Point { x: 5, y: 5 },
+        width: 5,
+        height: 5,
+    };
+    let mut expected_recs = vec![[5., 5., 2., 5.], [0., 5., 3., 5.]];
+    rect.draw(Point { x: 7, y: 10 }, &mut |r| {
+        for (i, rec) in expected_recs.iter().enumerate() {
+            if rec == &r {
+                expected_recs.remove(i);
+                return
+            }
+        }
+        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
+    });
 }
