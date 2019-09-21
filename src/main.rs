@@ -52,7 +52,7 @@ fn main() {
 
 #[test]
 fn my_rectangle_draw_no_overflow() {
-    let rect = MyRectangle {
+    let rect = Rectangle {
         top_left: Point { x: 5, y: 5 },
         width: 5,
         height: 5,
@@ -71,7 +71,7 @@ fn my_rectangle_draw_no_overflow() {
 
 #[test]
 fn my_rectangle_draw_overflow() {
-    let rect = MyRectangle {
+    let rect = Rectangle {
         top_left: Point { x: 5, y: 5 },
         width: 5,
         height: 5,

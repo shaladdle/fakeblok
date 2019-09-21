@@ -1,10 +1,10 @@
 use log::info;
 
-use piston_window::{context::Context, rectangle, types::Rectangle, G2d, Key};
+use piston_window::{context::Context, rectangle, types, G2d, Key};
 
 pub type GameInt = u16;
 
-const BLACK: Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
+const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Point {
@@ -50,15 +50,15 @@ impl std::ops::Add for Point {
 
 pub struct Game {
     pub bottom_right: Point,
-    pub square1: MyRectangle,
-    pub square2: MyRectangle,
+    pub square1: Rectangle,
+    pub square2: Rectangle,
 }
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
-        let square1 = MyRectangle::new(Point::new(0, 0), square_side_length, square_side_length);
+        let square1 = Rectangle::new(Point::new(0, 0), square_side_length, square_side_length);
         let square2_y = bottom_right.y - square_side_length;
-        let square2 = MyRectangle::new(
+        let square2 = Rectangle::new(
             Point::new(0, square2_y),
             square_side_length,
             square_side_length,
@@ -70,7 +70,7 @@ impl Game {
         }
     }
 
-    pub fn entities(&self) -> Vec<&MyRectangle> {
+    pub fn entities(&self) -> Vec<&Rectangle> {
         vec![&self.square1, &self.square2]
     }
 
@@ -106,15 +106,15 @@ impl Game {
     }
 }
 
-pub struct MyRectangle {
+pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
     pub height: GameInt,
 }
 
-impl MyRectangle {
+impl Rectangle {
     pub fn new(top_left: Point, width: GameInt, height: GameInt) -> Self {
-        MyRectangle {
+        Rectangle {
             top_left,
             width,
             height,
@@ -137,11 +137,11 @@ impl MyRectangle {
         self.top_left.y = (self.top_left.y + diff) % height;
     }
 
-    pub fn draw(&self, bottom_right: Point, drawer: &mut impl FnMut(Rectangle)) {
+    pub fn draw(&self, bottom_right: Point, drawer: &mut impl FnMut(types::Rectangle)) {
         let my_bottom_right = self.bottom_right();
         if my_bottom_right.is_below(bottom_right) {
             let bottom_overflow = my_bottom_right.y - bottom_right.y;
-            MyRectangle {
+            Rectangle {
                 top_left: Point {
                     x: self.top_left.x,
                     y: 0,
@@ -153,7 +153,7 @@ impl MyRectangle {
         }
         if my_bottom_right.is_right_of(bottom_right) {
             let right_overflow = my_bottom_right.x - bottom_right.x;
-            MyRectangle {
+            Rectangle {
                 top_left: Point {
                     x: 0,
                     y: self.top_left.y,
