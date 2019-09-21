@@ -8,7 +8,7 @@ use piston_window::{
     EventLoop, G2d, Input, Key, OpenGL, PistonWindow, WindowSettings,
 };
 
-const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const BLACK: Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 
 type GameInt = u16;
 
