@@ -4,8 +4,17 @@ use piston_window::{context::Context, rectangle, types, G2d, Key};
 use std::convert::{TryFrom, TryInto};
 
 pub type GameInt = u16;
+pub type EntityId = usize;
 
+const SQUARE_1: EntityId = 0;
+const SQUARE_2: EntityId = 1;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
+const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
+
+pub struct Tagged<T> {
+    id: EntityId,
+    data: T,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Point {
@@ -59,8 +68,8 @@ impl std::ops::Add for Point {
 
 pub struct Game {
     pub bottom_right: Point,
-    pub square1: Rectangle,
-    pub square2: Rectangle,
+    pub positions: Vec<Rectangle>,
+    pub colors: Vec<types::Rectangle<f32>>,
 }
 
 impl Game {
@@ -74,34 +83,136 @@ impl Game {
         );
         Game {
             bottom_right,
-            square1,
-            square2,
+            positions: vec![square1, square2],
+            colors: vec![BLACK, RED],
         }
     }
 
-    pub fn entities(&self) -> Vec<&Rectangle> {
-        vec![&self.square1, &self.square2]
+    pub fn entities(&self) -> &[Rectangle] {
+        &self.positions
+    }
+
+    pub fn move_entity_up(&mut self, entity: EntityId) {
+        let height = self.height();
+        self.positions[entity].move_up(5, height);
+        let (entity, entities) = self.operate_on_position(entity);
+        for Tagged { data, .. } in entities {
+            match entity.overlap(data) {
+                Some(Rectangle {
+                    top_left, height, ..
+                }) => entity.top_left.y = top_left.y + height,
+                None => {}
+            }
+        }
+    }
+
+    pub fn move_entity_left(&mut self, entity: EntityId) {
+        let width = self.width();
+        self.positions[entity].move_left(5, width);
+        let (entity, entities) = self.operate_on_position(entity);
+        for Tagged { data, .. } in entities {
+            match entity.overlap(data) {
+                Some(Rectangle {
+                    top_left, width, ..
+                }) => entity.top_left.x = top_left.x + width,
+                None => {}
+            }
+        }
+    }
+
+    pub fn move_entity_right(&mut self, entity: EntityId) {
+        let width = self.width();
+        self.positions[entity].move_right(5, width);
+        let right_edge = self.positions[entity].top_left.x + self.positions[entity].width;
+        if right_edge > width {
+            let overflow = Rectangle {
+                top_left: self.positions[entity].top_left.at_x(0),
+                width: right_edge % width,
+                height: self.positions[entity].height,
+            };
+            let (entity, entities) = self.operate_on_position(entity);
+            for Tagged { data, .. } in entities {
+                match overflow.overlap(data) {
+                    Some(Rectangle { width, .. }) => entity.top_left.x -= width,
+                    None => {}
+                }
+            }
+        }
+        let (entity, entities) = self.operate_on_position(entity);
+        for Tagged { data, .. } in entities {
+            match entity.overlap(data) {
+                Some(Rectangle { width, .. }) => entity.top_left.x -= width,
+                None => {}
+            }
+        }
+    }
+
+    pub fn move_entity_down(&mut self, entity: EntityId) {
+        let height = self.height();
+        self.positions[entity].move_down(5, height);
+        let bottom_edge = self.positions[entity].top_left.y + self.positions[entity].height;
+        if bottom_edge > height {
+            let overflow = Rectangle {
+                top_left: self.positions[entity].top_left.at_y(0),
+                width: self.positions[entity].width,
+                height: bottom_edge % height,
+            };
+            let (entity, entities) = self.operate_on_position(entity);
+            for Tagged { data, .. } in entities {
+                match overflow.overlap(data) {
+                    Some(Rectangle { height, .. }) => entity.top_left.y -= height,
+                    None => {}
+                }
+            }
+        }
+        let (entity, entities) = self.operate_on_position(entity);
+        for Tagged { data, .. } in entities {
+            match entity.overlap(data) {
+                Some(Rectangle { height, .. }) => entity.top_left.y -= height,
+                None => {}
+            }
+        }
+    }
+
+    pub fn operate_on_position(
+        &mut self,
+        entity: EntityId,
+    ) -> (&mut Rectangle, impl Iterator<Item = Tagged<&mut Rectangle>>) {
+        let (before, beginning_with) = self.positions.split_at_mut(entity);
+        let before_len = before.len();
+        let (entity, after) = beginning_with.split_first_mut().unwrap();
+        (
+            entity,
+            before
+                .iter_mut()
+                .enumerate()
+                .map(|(id, data)| Tagged { id, data })
+                .chain(after.iter_mut().enumerate().map(move |(idx, data)| Tagged {
+                    id: before_len + 1 + idx,
+                    data,
+                })),
+        )
     }
 
     pub fn process_key(&mut self, key: &Key) {
         match key {
-            &Key::W => self.square1.move_up(5, self.height(), &mut self.square2),
-            &Key::A => self.square1.move_left(5, self.width(), &mut self.square2),
-            &Key::S => self.square1.move_down(5, self.height(), &mut self.square2),
-            &Key::D => self.square1.move_right(5, self.width(), &mut self.square2),
-            &Key::Up => self.square2.move_up(5, self.height(), &mut self.square1),
-            &Key::Left => self.square2.move_left(5, self.width(), &mut self.square1),
-            &Key::Down => self.square2.move_down(5, self.height(), &mut self.square1),
-            &Key::Right => self.square2.move_right(5, self.width(), &mut self.square1),
+            &Key::W => self.move_entity_up(SQUARE_1),
+            &Key::A => self.move_entity_left(SQUARE_1),
+            &Key::S => self.move_entity_down(SQUARE_1),
+            &Key::D => self.move_entity_right(SQUARE_1),
+            &Key::Up => self.move_entity_up(SQUARE_1),
+            &Key::Left => self.move_entity_left(SQUARE_2),
+            &Key::Down => self.move_entity_down(SQUARE_2),
+            &Key::Right => self.move_entity_right(SQUARE_2),
             _ => (),
         }
         info!("key: {:?}", key);
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
-        for entity in self.entities() {
+        for (i, entity) in self.entities().iter().enumerate() {
             entity.draw(self.bottom_right, &mut |rect| {
-                rectangle(BLACK, rect, c.transform, g);
+                rectangle(self.colors[i], rect, c.transform, g);
             });
         }
     }
@@ -162,64 +273,20 @@ impl Rectangle {
         }
     }
 
-    pub fn move_left(&mut self, diff: GameInt, width: GameInt, other: &mut Rectangle) {
+    pub fn move_left(&mut self, diff: GameInt, width: GameInt) {
         self.top_left.x = (width + self.top_left.x - (diff % width)) % width;
-        match self.overlap(other) {
-            Some(Rectangle {
-                top_left, width, ..
-            }) => self.top_left.x = top_left.x + width,
-            None => {}
-        }
     }
 
-    pub fn move_right(&mut self, diff: GameInt, width: GameInt, other: &mut Rectangle) {
+    pub fn move_right(&mut self, diff: GameInt, width: GameInt) {
         self.top_left.x = (self.top_left.x + diff) % width;
-        let right_edge = self.top_left.x + self.width;
-        if right_edge > width {
-            let overflow = Rectangle {
-                top_left: self.top_left.at_x(0),
-                width: right_edge % width,
-                height: self.height,
-            };
-            match overflow.overlap(other) {
-                Some(Rectangle { width, .. }) => self.top_left.x -= width,
-                None => {}
-            }
-        }
-        match self.overlap(other) {
-            Some(Rectangle { width, .. }) => self.top_left.x -= width,
-            None => {}
-        }
     }
 
-    pub fn move_up(&mut self, diff: GameInt, height: GameInt, other: &mut Rectangle) {
+    pub fn move_up(&mut self, diff: GameInt, height: GameInt) {
         self.top_left.y = (height + self.top_left.y - (diff % height)) % height;
-        match self.overlap(other) {
-            Some(Rectangle {
-                top_left, height, ..
-            }) => self.top_left.y = top_left.y + height,
-            None => {}
-        }
     }
 
-    pub fn move_down(&mut self, diff: GameInt, height: GameInt, other: &mut Rectangle) {
+    pub fn move_down(&mut self, diff: GameInt, height: GameInt) {
         self.top_left.y = (self.top_left.y + diff) % height;
-        let bottom_edge = self.top_left.y + self.height;
-        if bottom_edge > height {
-            let overflow = Rectangle {
-                top_left: self.top_left.at_y(0),
-                width: self.width,
-                height: bottom_edge % height,
-            };
-            match overflow.overlap(other) {
-                Some(Rectangle { height, .. }) => self.top_left.y -= height,
-                None => {}
-            }
-        }
-        match self.overlap(other) {
-            Some(Rectangle { height, .. }) => self.top_left.y -= height,
-            None => {}
-        }
     }
 
     pub fn overlap(&self, other: &Rectangle) -> Option<Rectangle> {
