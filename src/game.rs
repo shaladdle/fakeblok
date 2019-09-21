@@ -1,6 +1,7 @@
 use log::info;
 
 use piston_window::{context::Context, rectangle, types, G2d, Key};
+use std::convert::{TryFrom, TryInto};
 
 pub type GameInt = u16;
 
@@ -23,6 +24,14 @@ impl Point {
 
     pub fn is_right_of(self, other: Point) -> bool {
         return self.x > other.x;
+    }
+
+    pub fn at_x(&self, x: GameInt) -> Self {
+        Point { x, y: self.y }
+    }
+
+    pub fn at_y(&self, y: GameInt) -> Self {
+        Point { x: self.x, y }
     }
 }
 
@@ -76,14 +85,14 @@ impl Game {
 
     pub fn process_key(&mut self, key: &Key) {
         match key {
-            &Key::W => self.square1.move_up(5, self.height()),
-            &Key::A => self.square1.move_left(5, self.width()),
-            &Key::S => self.square1.move_down(5, self.height()),
-            &Key::D => self.square1.move_right(5, self.width()),
-            &Key::Up => self.square2.move_up(5, self.height()),
-            &Key::Left => self.square2.move_left(5, self.width()),
-            &Key::Down => self.square2.move_down(5, self.height()),
-            &Key::Right => self.square2.move_right(5, self.width()),
+            &Key::W => self.square1.move_up(5, self.height(), &mut self.square2),
+            &Key::A => self.square1.move_left(5, self.width(), &mut self.square2),
+            &Key::S => self.square1.move_down(5, self.height(), &mut self.square2),
+            &Key::D => self.square1.move_right(5, self.width(), &mut self.square2),
+            &Key::Up => self.square2.move_up(5, self.height(), &mut self.square1),
+            &Key::Left => self.square2.move_left(5, self.width(), &mut self.square1),
+            &Key::Down => self.square2.move_down(5, self.height(), &mut self.square1),
+            &Key::Right => self.square2.move_right(5, self.width(), &mut self.square1),
             _ => (),
         }
         info!("key: {:?}", key);
@@ -106,10 +115,42 @@ impl Game {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
     pub height: GameInt,
+}
+
+impl<T> Into<types::Rectangle<T>> for Rectangle
+where
+    GameInt: Into<T>,
+{
+    fn into(self) -> types::Rectangle<T> {
+        [
+            self.top_left.x.into(),
+            self.top_left.y.into(),
+            self.width.into(),
+            self.height.into(),
+        ]
+    }
+}
+
+impl<T: Copy> TryFrom<types::Rectangle<T>> for Rectangle
+where
+    GameInt: TryFrom<T>,
+{
+    type Error = <GameInt as TryFrom<T>>::Error;
+    fn try_from([x, y, w, h]: types::Rectangle<T>) -> Result<Self, <GameInt as TryFrom<T>>::Error> {
+        Ok(Rectangle {
+            top_left: Point {
+                x: x.try_into()?,
+                y: y.try_into()?,
+            },
+            width: w.try_into()?,
+            height: h.try_into()?,
+        })
+    }
 }
 
 impl Rectangle {
@@ -121,20 +162,84 @@ impl Rectangle {
         }
     }
 
-    pub fn move_left(&mut self, diff: GameInt, width: GameInt) {
+    pub fn move_left(&mut self, diff: GameInt, width: GameInt, other: &mut Rectangle) {
         self.top_left.x = (width + self.top_left.x - (diff % width)) % width;
+        match self.overlap(other) {
+            Some(Rectangle {
+                top_left, width, ..
+            }) => self.top_left.x = top_left.x + width,
+            None => {}
+        }
     }
 
-    pub fn move_right(&mut self, diff: GameInt, width: GameInt) {
+    pub fn move_right(&mut self, diff: GameInt, width: GameInt, other: &mut Rectangle) {
         self.top_left.x = (self.top_left.x + diff) % width;
+        let right_edge = self.top_left.x + self.width;
+        if right_edge > width {
+            let overflow = Rectangle {
+                top_left: self.top_left.at_x(0),
+                width: right_edge % width,
+                height: self.height,
+            };
+            match overflow.overlap(other) {
+                Some(Rectangle { width, .. }) => self.top_left.x -= width,
+                None => {}
+            }
+        }
+        match self.overlap(other) {
+            Some(Rectangle { width, .. }) => self.top_left.x -= width,
+            None => {}
+        }
     }
 
-    pub fn move_up(&mut self, diff: GameInt, height: GameInt) {
+    pub fn move_up(&mut self, diff: GameInt, height: GameInt, other: &mut Rectangle) {
         self.top_left.y = (height + self.top_left.y - (diff % height)) % height;
+        match self.overlap(other) {
+            Some(Rectangle {
+                top_left, height, ..
+            }) => self.top_left.y = top_left.y + height,
+            None => {}
+        }
     }
 
-    pub fn move_down(&mut self, diff: GameInt, height: GameInt) {
+    pub fn move_down(&mut self, diff: GameInt, height: GameInt, other: &mut Rectangle) {
         self.top_left.y = (self.top_left.y + diff) % height;
+        let bottom_edge = self.top_left.y + self.height;
+        if bottom_edge > height {
+            let overflow = Rectangle {
+                top_left: self.top_left.at_y(0),
+                width: self.width,
+                height: bottom_edge % height,
+            };
+            match overflow.overlap(other) {
+                Some(Rectangle { height, .. }) => self.top_left.y -= height,
+                None => {}
+            }
+        }
+        match self.overlap(other) {
+            Some(Rectangle { height, .. }) => self.top_left.y -= height,
+            None => {}
+        }
+    }
+
+    pub fn overlap(&self, other: &Rectangle) -> Option<Rectangle> {
+        let self_bottom_right = self.bottom_right();
+        let other_bottom_right = other.bottom_right();
+        if self.top_left.x < other_bottom_right.x
+            && self.top_left.y < other_bottom_right.y
+            && other.top_left.x < self_bottom_right.x
+            && other.top_left.y < self_bottom_right.y
+        {
+            let x = self.top_left.x.max(other.top_left.x);
+            let y = self.top_left.y.max(other.top_left.y);
+            Some(Rectangle {
+                top_left: Point { x, y },
+                width: self_bottom_right.x.min(other_bottom_right.x) - x,
+                height: self_bottom_right.y.min(other_bottom_right.y) - y,
+            })
+        } else {
+            None
+        }
     }
 
     pub fn draw(&self, bottom_right: Point, drawer: &mut impl FnMut(types::Rectangle)) {
