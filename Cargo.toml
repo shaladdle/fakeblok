@@ -3,6 +3,8 @@ name = "fakeblok"
 version = "0.0.0"
 authors = ["Adam Wright <shaladdle@gmail.com>", "Tim Kuehn <timothy.j.kuehn@gmail.com>"]
 keywords = []
+edition = "2018"
+
 
 [dependencies]
 piston_window = "0.104.0"

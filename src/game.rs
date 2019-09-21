@@ -284,3 +284,41 @@ impl Rectangle {
             }
     }
 }
+
+#[test]
+fn my_rectangle_draw_no_overflow() {
+    let rect = Rectangle {
+        top_left: Point { x: 5, y: 5 },
+        width: 5,
+        height: 5,
+    };
+    let mut expected_recs = vec![[5., 5., 5., 5.]];
+    rect.draw(Point { x: 10, y: 10 }, &mut |r| {
+        for (i, rec) in expected_recs.iter().enumerate() {
+            if rec == &r {
+                expected_recs.remove(i);
+                return;
+            }
+        }
+        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
+    });
+}
+
+#[test]
+fn my_rectangle_draw_overflow() {
+    let rect = Rectangle {
+        top_left: Point { x: 5, y: 5 },
+        width: 5,
+        height: 5,
+    };
+    let mut expected_recs = vec![[5., 5., 2., 5.], [0., 5., 3., 5.]];
+    rect.draw(Point { x: 7, y: 10 }, &mut |r| {
+        for (i, rec) in expected_recs.iter().enumerate() {
+            if rec == &r {
+                expected_recs.remove(i);
+                return;
+            }
+        }
+        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
+    });
+}
