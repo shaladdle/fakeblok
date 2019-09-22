@@ -92,86 +92,49 @@ impl Game {
         &self.positions
     }
 
-    pub fn move_entity_up(&mut self, entity: EntityId) {
-        let height = self.height();
-        self.positions[entity].move_up(5, height);
+    pub fn move_entity(
+        &mut self,
+        entity: EntityId,
+        get_overlap: impl Fn(&Rectangle) -> GameInt,
+        // (&mut self, diff: GameInt, width: GameInt)
+        forward: impl FnOnce(&mut Rectangle, GameInt, GameInt),
+        // (&mut self, diff: GameInt, width: GameInt)
+        backward: impl FnOnce(&mut Rectangle, GameInt, GameInt),
+    ) {
+        let game_width = self.width();
+        let bottom_right = self.bottom_right;
         let (entity, entities) = self.operate_on_position(entity);
+        forward(entity, 5, game_width);
+        let mut entity_segments = vec![];
+        let mut overlap = 0;
+        entity.segments(bottom_right, |r| entity_segments.push(r));
         for Tagged { data, .. } in entities {
-            match entity.overlap(data) {
-                Some(Rectangle {
-                    top_left, height, ..
-                }) => entity.top_left.y = top_left.y + height,
-                None => {}
+            for entity_segment in &entity_segments {
+                data.segments(bottom_right, |r| match entity_segment.overlap(&r) {
+                    Some(r) => overlap = overlap.max(get_overlap(&r)),
+                    None => {}
+                });
             }
         }
+        if overlap > 0 {
+            backward(entity, overlap, game_width);
+        }
+    }
+
+    pub fn move_entity_up(&mut self, entity: EntityId) {
+        self.move_entity(entity, |r| r.height, Rectangle::move_up, Rectangle::move_down);
     }
 
     pub fn move_entity_left(&mut self, entity: EntityId) {
-        let width = self.width();
-        self.positions[entity].move_left(5, width);
-        let (entity, entities) = self.operate_on_position(entity);
-        for Tagged { data, .. } in entities {
-            match entity.overlap(data) {
-                Some(Rectangle {
-                    top_left, width, ..
-                }) => entity.top_left.x = top_left.x + width,
-                None => {}
-            }
-        }
+        self.move_entity(entity, |r| r.width, Rectangle::move_left, Rectangle::move_right);
     }
 
     pub fn move_entity_right(&mut self, entity: EntityId) {
-        let width = self.width();
-        self.positions[entity].move_right(5, width);
-        let right_edge = self.positions[entity].top_left.x + self.positions[entity].width;
-        if right_edge > width {
-            let overflow = Rectangle {
-                top_left: self.positions[entity].top_left.at_x(0),
-                width: right_edge % width,
-                height: self.positions[entity].height,
-            };
-            let (entity, entities) = self.operate_on_position(entity);
-            for Tagged { data, .. } in entities {
-                match overflow.overlap(data) {
-                    Some(Rectangle { width, .. }) => entity.top_left.x -= width,
-                    None => {}
-                }
-            }
-        }
-        let (entity, entities) = self.operate_on_position(entity);
-        for Tagged { data, .. } in entities {
-            match entity.overlap(data) {
-                Some(Rectangle { width, .. }) => entity.top_left.x -= width,
-                None => {}
-            }
-        }
+        self.move_entity(entity, |r| r.width, Rectangle::move_right, Rectangle::move_left);
     }
 
     pub fn move_entity_down(&mut self, entity: EntityId) {
-        let height = self.height();
-        self.positions[entity].move_down(5, height);
-        let bottom_edge = self.positions[entity].top_left.y + self.positions[entity].height;
-        if bottom_edge > height {
-            let overflow = Rectangle {
-                top_left: self.positions[entity].top_left.at_y(0),
-                width: self.positions[entity].width,
-                height: bottom_edge % height,
-            };
-            let (entity, entities) = self.operate_on_position(entity);
-            for Tagged { data, .. } in entities {
-                match overflow.overlap(data) {
-                    Some(Rectangle { height, .. }) => entity.top_left.y -= height,
-                    None => {}
-                }
-            }
-        }
-        let (entity, entities) = self.operate_on_position(entity);
-        for Tagged { data, .. } in entities {
-            match entity.overlap(data) {
-                Some(Rectangle { height, .. }) => entity.top_left.y -= height,
-                None => {}
-            }
-        }
+        self.move_entity(entity, |r| r.height, Rectangle::move_down, Rectangle::move_up);
     }
 
     pub fn operate_on_position(
@@ -200,7 +163,7 @@ impl Game {
             &Key::A => self.move_entity_left(SQUARE_1),
             &Key::S => self.move_entity_down(SQUARE_1),
             &Key::D => self.move_entity_right(SQUARE_1),
-            &Key::Up => self.move_entity_up(SQUARE_1),
+            &Key::Up => self.move_entity_up(SQUARE_2),
             &Key::Left => self.move_entity_left(SQUARE_2),
             &Key::Down => self.move_entity_down(SQUARE_2),
             &Key::Right => self.move_entity_right(SQUARE_2),
@@ -211,8 +174,13 @@ impl Game {
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
         for (i, entity) in self.entities().iter().enumerate() {
-            entity.draw(self.bottom_right, &mut |rect| {
-                rectangle(self.colors[i], rect, c.transform, g);
+            entity.segments(self.bottom_right, |rect| {
+                rectangle(
+                    self.colors[i],
+                    Into::<types::Rectangle>::into(rect),
+                    c.transform,
+                    g,
+                );
             });
         }
     }
@@ -226,7 +194,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
@@ -309,7 +277,11 @@ impl Rectangle {
         }
     }
 
-    pub fn draw(&self, bottom_right: Point, drawer: &mut impl FnMut(types::Rectangle)) {
+    pub fn segments(&self, bottom_right: Point, mut f: impl FnMut(Rectangle)) {
+        self.segments_helper(bottom_right, &mut f);
+    }
+
+    fn segments_helper(&self, bottom_right: Point, f: &mut impl FnMut(Rectangle)) {
         let my_bottom_right = self.bottom_right();
         if my_bottom_right.is_below(bottom_right) {
             let bottom_overflow = my_bottom_right.y - bottom_right.y;
@@ -321,7 +293,7 @@ impl Rectangle {
                 width: self.width,
                 height: bottom_overflow,
             }
-            .draw(bottom_right, drawer);
+            .segments_helper(bottom_right, f);
         }
         if my_bottom_right.is_right_of(bottom_right) {
             let right_overflow = my_bottom_right.x - bottom_right.x;
@@ -333,14 +305,13 @@ impl Rectangle {
                 width: right_overflow,
                 height: self.height,
             }
-            .draw(bottom_right, drawer);
+            .segments_helper(bottom_right, f);
         }
-        drawer([
-            f64::from(self.top_left.x),
-            self.top_left.y.into(),
-            self.width.min(bottom_right.x - self.top_left.x).into(),
-            self.height.min(bottom_right.y - self.top_left.y).into(),
-        ]);
+        f(Rectangle {
+            top_left: self.top_left,
+            width: self.width.min(bottom_right.x - self.top_left.x),
+            height: self.height.min(bottom_right.y - self.top_left.y),
+        });
     }
 
     pub fn bottom_right(&self) -> Point {
@@ -353,14 +324,14 @@ impl Rectangle {
 }
 
 #[test]
-fn my_rectangle_draw_no_overflow() {
+fn my_rectangle_segments_no_overflow() {
     let rect = Rectangle {
         top_left: Point { x: 5, y: 5 },
         width: 5,
         height: 5,
     };
-    let mut expected_recs = vec![[5., 5., 5., 5.]];
-    rect.draw(Point { x: 10, y: 10 }, &mut |r| {
+    let mut expected_recs = vec![Rectangle::new(Point::new(5, 5), 5, 5)];
+    rect.segments(Point { x: 10, y: 10 }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
@@ -372,14 +343,17 @@ fn my_rectangle_draw_no_overflow() {
 }
 
 #[test]
-fn my_rectangle_draw_overflow() {
+fn my_rectangle_segments_overflow() {
     let rect = Rectangle {
         top_left: Point { x: 5, y: 5 },
         width: 5,
         height: 5,
     };
-    let mut expected_recs = vec![[5., 5., 2., 5.], [0., 5., 3., 5.]];
-    rect.draw(Point { x: 7, y: 10 }, &mut |r| {
+    let mut expected_recs = vec![
+        Rectangle::new(Point::new(5, 5), 2, 5),
+        Rectangle::new(Point::new(0, 5), 3, 5),
+    ];
+    rect.segments(Point { x: 7, y: 10 }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
