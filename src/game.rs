@@ -129,15 +129,22 @@ impl Game {
         self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
         let mut overlap = 0;
         for id in 0..self.positions.len() {
-            if id == entity { continue }
-            let entity_overlap = entity_segments.iter().map(|entity_segment| {
-                let mut overlap = 0;
-                self.positions[id].segments(bottom_right, |r| match entity_segment.overlap(&r) {
-                    Some(r) => overlap = overlap.max(get_overlap(&r)),
-                    None => {}
-                });
-                overlap
-            }).max();
+            if id == entity {
+                continue;
+            }
+            let entity_overlap = entity_segments
+                .iter()
+                .map(|entity_segment| {
+                    let mut overlap = 0;
+                    self.positions[id].segments(bottom_right, |r| {
+                        match entity_segment.overlap(&r) {
+                            Some(r) => overlap = overlap.max(get_overlap(&r)),
+                            None => {}
+                        }
+                    });
+                    overlap
+                })
+                .max();
             if let Some(entity_overlap) = entity_overlap.filter(|overlap| *overlap > 0) {
                 if self.moveable[id] {
                     let pushed = self.move_entity(id, get_overlap, forward, backward);
@@ -154,19 +161,39 @@ impl Game {
     }
 
     pub fn move_entity_up(&mut self, entity: EntityId) {
-        self.move_entity(entity, |r| r.height, Rectangle::move_up, Rectangle::move_down);
+        self.move_entity(
+            entity,
+            |r| r.height,
+            Rectangle::move_up,
+            Rectangle::move_down,
+        );
     }
 
     pub fn move_entity_left(&mut self, entity: EntityId) {
-        self.move_entity(entity, |r| r.width, Rectangle::move_left, Rectangle::move_right);
+        self.move_entity(
+            entity,
+            |r| r.width,
+            Rectangle::move_left,
+            Rectangle::move_right,
+        );
     }
 
     pub fn move_entity_right(&mut self, entity: EntityId) {
-        self.move_entity(entity, |r| r.width, Rectangle::move_right, Rectangle::move_left);
+        self.move_entity(
+            entity,
+            |r| r.width,
+            Rectangle::move_right,
+            Rectangle::move_left,
+        );
     }
 
     pub fn move_entity_down(&mut self, entity: EntityId) {
-        self.move_entity(entity, |r| r.height, Rectangle::move_down, Rectangle::move_up);
+        self.move_entity(
+            entity,
+            |r| r.height,
+            Rectangle::move_down,
+            Rectangle::move_up,
+        );
     }
 
     pub fn process_key(&mut self, key: &Key) {
