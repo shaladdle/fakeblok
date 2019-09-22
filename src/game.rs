@@ -1,12 +1,11 @@
 use log::info;
 
 use piston_window::{context::Context, rectangle, types, G2d, Key};
-use std::convert::{TryFrom, TryInto};
 
 pub type GameInt = u16;
 pub type EntityId = usize;
 
-const MOVE_INCREMENT: GameInt = 5;
+const MOVE_INCREMENT: GameInt = 1;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
@@ -212,11 +211,15 @@ impl Game {
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
+        let [x, y] = c.viewport.unwrap().window_size;
         for (i, entity) in self.entities().iter().enumerate() {
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
-                    Into::<types::Rectangle>::into(rect),
+                    rect.scale(
+                        x / self.bottom_right.x as f64,
+                        y / self.bottom_right.y as f64,
+                    ),
                     c.transform,
                     g,
                 );
@@ -238,37 +241,6 @@ pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
     pub height: GameInt,
-}
-
-impl<T> Into<types::Rectangle<T>> for Rectangle
-where
-    GameInt: Into<T>,
-{
-    fn into(self) -> types::Rectangle<T> {
-        [
-            self.top_left.x.into(),
-            self.top_left.y.into(),
-            self.width.into(),
-            self.height.into(),
-        ]
-    }
-}
-
-impl<T: Copy> TryFrom<types::Rectangle<T>> for Rectangle
-where
-    GameInt: TryFrom<T>,
-{
-    type Error = <GameInt as TryFrom<T>>::Error;
-    fn try_from([x, y, w, h]: types::Rectangle<T>) -> Result<Self, <GameInt as TryFrom<T>>::Error> {
-        Ok(Rectangle {
-            top_left: Point {
-                x: x.try_into()?,
-                y: y.try_into()?,
-            },
-            width: w.try_into()?,
-            height: h.try_into()?,
-        })
-    }
 }
 
 impl Rectangle {
@@ -359,6 +331,15 @@ impl Rectangle {
                 x: self.width,
                 y: self.height,
             }
+    }
+
+    pub fn scale(&self, x_factor: f64, y_factor: f64) -> types::Rectangle<f64> {
+        [
+            self.top_left.x as f64 * x_factor,
+            self.top_left.y as f64 * y_factor,
+            self.width as f64 * x_factor,
+            self.height as f64 * y_factor,
+        ]
     }
 }
 
