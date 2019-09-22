@@ -8,6 +8,7 @@ pub type EntityId = usize;
 const MOVE_INCREMENT: GameInt = 1;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
+const IMMOVEABLE_OBJECT: EntityId = 2;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
 const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
@@ -208,6 +209,10 @@ impl Game {
             _ => (),
         }
         info!("key: {:?}", key);
+    }
+
+    pub fn tick(&mut self) {
+        self.move_entity_up(IMMOVEABLE_OBJECT);
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {

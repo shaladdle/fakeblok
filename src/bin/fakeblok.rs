@@ -29,7 +29,7 @@ fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
     match lp {
         Loop::Idle(_) => {}
         Loop::Update(_) => {
-            game.move_entity_up(2);
+            game.tick();
             for key in keys {
                 game.process_key(key);
             }
