@@ -6,15 +6,12 @@ use std::convert::{TryFrom, TryInto};
 pub type GameInt = u16;
 pub type EntityId = usize;
 
+const MOVE_INCREMENT: GameInt = 5;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
-
-pub struct Tagged<T> {
-    id: EntityId,
-    data: T,
-}
+const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Point {
@@ -28,11 +25,11 @@ impl Point {
     }
 
     pub fn is_below(self, other: Point) -> bool {
-        return self.y > other.y;
+        self.y > other.y
     }
 
     pub fn is_right_of(self, other: Point) -> bool {
-        return self.x > other.x;
+        self.x > other.x
     }
 
     pub fn at_x(&self, x: GameInt) -> Self {
@@ -66,25 +63,49 @@ impl std::ops::Add for Point {
     }
 }
 
+impl std::ops::Mul<GameInt> for Point {
+    type Output = Self;
+
+    fn mul(self, multiplier: GameInt) -> Self {
+        Self {
+            x: self.x * multiplier,
+            y: self.y * multiplier,
+        }
+    }
+}
+
+impl std::ops::Div<GameInt> for Point {
+    type Output = Self;
+
+    fn div(self, divisor: GameInt) -> Self {
+        Self {
+            x: self.x / divisor,
+            y: self.y / divisor,
+        }
+    }
+}
+
 pub struct Game {
     pub bottom_right: Point,
     pub positions: Vec<Rectangle>,
+    pub moveable: Vec<bool>,
     pub colors: Vec<types::Rectangle<f32>>,
 }
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
         let square1 = Rectangle::new(Point::new(0, 0), square_side_length, square_side_length);
-        let square2_y = bottom_right.y - square_side_length;
         let square2 = Rectangle::new(
-            Point::new(0, square2_y),
+            Point::new(0, bottom_right.y - square_side_length),
             square_side_length,
             square_side_length,
         );
+        let square3 = Rectangle::new(bottom_right / 2, square_side_length, square_side_length);
         Game {
             bottom_right,
-            positions: vec![square1, square2],
-            colors: vec![BLACK, RED],
+            positions: vec![square1, square2, square3],
+            moveable: vec![true, true, false],
+            colors: vec![BLACK, RED, GREEN],
         }
     }
 
@@ -95,30 +116,41 @@ impl Game {
     pub fn move_entity(
         &mut self,
         entity: EntityId,
-        get_overlap: impl Fn(&Rectangle) -> GameInt,
+        get_overlap: impl Fn(&Rectangle) -> GameInt + Copy,
         // (&mut self, diff: GameInt, width: GameInt)
-        forward: impl FnOnce(&mut Rectangle, GameInt, GameInt),
+        forward: impl Fn(&mut Rectangle, GameInt, GameInt) + Copy,
         // (&mut self, diff: GameInt, width: GameInt)
-        backward: impl FnOnce(&mut Rectangle, GameInt, GameInt),
-    ) {
+        backward: impl Fn(&mut Rectangle, GameInt, GameInt) + Copy,
+    ) -> GameInt {
         let game_width = self.width();
         let bottom_right = self.bottom_right;
-        let (entity, entities) = self.operate_on_position(entity);
-        forward(entity, 5, game_width);
+        forward(&mut self.positions[entity], MOVE_INCREMENT, game_width);
         let mut entity_segments = vec![];
+        self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
         let mut overlap = 0;
-        entity.segments(bottom_right, |r| entity_segments.push(r));
-        for Tagged { data, .. } in entities {
-            for entity_segment in &entity_segments {
-                data.segments(bottom_right, |r| match entity_segment.overlap(&r) {
+        for id in 0..self.positions.len() {
+            if id == entity { continue }
+            let entity_overlap = entity_segments.iter().map(|entity_segment| {
+                let mut overlap = 0;
+                self.positions[id].segments(bottom_right, |r| match entity_segment.overlap(&r) {
                     Some(r) => overlap = overlap.max(get_overlap(&r)),
                     None => {}
                 });
+                overlap
+            }).max();
+            if let Some(entity_overlap) = entity_overlap.filter(|overlap| *overlap > 0) {
+                if self.moveable[id] {
+                    let pushed = self.move_entity(id, get_overlap, forward, backward);
+                    overlap = overlap.max(entity_overlap - pushed);
+                } else {
+                    overlap = overlap.max(entity_overlap)
+                }
             }
         }
         if overlap > 0 {
-            backward(entity, overlap, game_width);
+            backward(&mut self.positions[entity], overlap, game_width);
         }
+        MOVE_INCREMENT - overlap
     }
 
     pub fn move_entity_up(&mut self, entity: EntityId) {
@@ -135,26 +167,6 @@ impl Game {
 
     pub fn move_entity_down(&mut self, entity: EntityId) {
         self.move_entity(entity, |r| r.height, Rectangle::move_down, Rectangle::move_up);
-    }
-
-    pub fn operate_on_position(
-        &mut self,
-        entity: EntityId,
-    ) -> (&mut Rectangle, impl Iterator<Item = Tagged<&mut Rectangle>>) {
-        let (before, beginning_with) = self.positions.split_at_mut(entity);
-        let before_len = before.len();
-        let (entity, after) = beginning_with.split_first_mut().unwrap();
-        (
-            entity,
-            before
-                .iter_mut()
-                .enumerate()
-                .map(|(id, data)| Tagged { id, data })
-                .chain(after.iter_mut().enumerate().map(move |(idx, data)| Tagged {
-                    id: before_len + 1 + idx,
-                    data,
-                })),
-        )
     }
 
     pub fn process_key(&mut self, key: &Key) {
