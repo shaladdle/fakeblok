@@ -35,7 +35,7 @@ fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
         Loop::Update(_) => {
             game.tick();
             for key in keys {
-                game.process_key(key);
+                let _ = game.process_key(key);
             }
         }
         Loop::AfterRender(_) => {}

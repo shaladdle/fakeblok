@@ -3,7 +3,7 @@ use crate::rpc_service;
 use futures::future::TryFutureExt;
 use futures::Future;
 use futures::{channel::mpsc, stream::StreamExt};
-use log::{error, info};
+use log::{debug, error, info};
 use piston_window::Input;
 use std::io;
 use std::sync::{Arc, Mutex};
@@ -45,7 +45,7 @@ async fn push_inputs(
     mut inputs: mpsc::UnboundedReceiver<Input>,
 ) {
     while let Some(input) = inputs.next().await {
-        info!("push_input({:?})", input);
+        debug!("push_input({:?})", input);
         if let Err(err) = client.push_input(context::current(), input.clone()).await {
             error!("Error setting keys, {:?}: {:?}", input, err);
         }
@@ -69,15 +69,15 @@ async fn repeated_poll_game_state(
 
 impl GameClient {
     pub fn new(server_addr: &str) -> io::Result<GameClient> {
-        info!("Creating runtime");
+        debug!("Creating runtime");
         let mut runtime = current_thread::Runtime::new().unwrap();
-        info!("Creating client to {}", server_addr);
+        debug!("Creating client to {}", server_addr);
         let (mut client, dispatch) = runtime.block_on(create_client(server_addr))?;
         tokio::spawn(dispatch);
-        info!("Getting initial game state:");
+        debug!("Getting initial game state:");
         let game = runtime.block_on(client.poll_game_state(context::current()))?;
         let game = Arc::new(Mutex::new(game));
-        info!("Successfully created new GameClient");
+        debug!("Successfully created new GameClient");
         let (inputs, rx) = mpsc::unbounded();
         tokio::spawn(repeated_poll_game_state(client.clone(), game.clone()));
         tokio::spawn(push_inputs(client, rx));
