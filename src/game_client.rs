@@ -1,6 +1,7 @@
 use crate::game;
 use crate::rpc_service;
 use futures::future::TryFutureExt;
+use futures::Future;
 use futures::{channel::mpsc, stream::StreamExt};
 use log::{error, info};
 use piston_window::Input;
@@ -11,14 +12,15 @@ use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
 use tokio::timer::Interval;
-use futures::Future;
 
 pub struct GameClient {
     game: Arc<Mutex<game::Game>>,
     inputs: mpsc::UnboundedSender<Input>,
 }
 
-async fn create_client(server_addr: &str) -> io::Result<(rpc_service::GameClient, impl Future<Output=()>)> {
+async fn create_client(
+    server_addr: &str,
+) -> io::Result<(rpc_service::GameClient, impl Future<Output = ()>)> {
     let server_addr = match server_addr.parse() {
         Ok(s) => s,
         // TODO: Can we also pass the parse error as the detailed error?
