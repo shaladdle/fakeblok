@@ -33,10 +33,17 @@ async fn run_server(
         .map(move |channel| {
             info!("Cloning server");
             let server = server.clone();
-            info!("Creating response future");
-            let result = channel.respond_with(server.serve()).execute();
-            info!("Done");
-            result
+            async move {
+                info!("Creating response future");
+                let mut response_stream = channel.respond_with(server.serve());
+                while let Some(handler) = response_stream.next().await {
+                    // No need to do response handling concurrently, because thee futures are
+                    // very short-lived.
+                    handler?.await
+                }
+                info!("Done");
+                Ok::<_, io::Error>(())
+            }
         })
         .buffer_unordered(10)
         .for_each(|_| async {})
