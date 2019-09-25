@@ -44,16 +44,6 @@ async fn run_server(
     Ok(())
 }
 
-async fn run_server_a(
-    server_addr: SocketAddr,
-    game: Arc<Mutex<Game>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
-) {
-    if let Err(err) = run_server(server_addr, game, keys).await {
-        error!("Error run_server_a: {:?}", err);
-    }
-}
-
 fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
     match lp {
         Loop::Idle(_) => {}
@@ -135,7 +125,11 @@ fn main() -> io::Result<()> {
         std::thread::spawn(move || {
             let mut runtime = current_thread::Runtime::new().unwrap();
             info!("Start server");
-            runtime.block_on(run_server_a(server_addr, game, keys));
+            runtime.block_on(async {
+                if let Err(err) = run_server(server_addr, game, keys).await {
+                    error!("Error run_server_a: {:?}", err);
+                }
+            });
             info!("Server done");
             runtime.run().unwrap();
         });
