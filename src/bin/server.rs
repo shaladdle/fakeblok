@@ -129,10 +129,10 @@ fn main() -> io::Result<()> {
 
     let game = Arc::new(Mutex::new(game::Game::new(
         Point {
-            x: 10_000,
-            y: 10_000,
+            x: 10_000.,
+            y: 10_000.,
         },
-        1000,
+        1000.,
     )));
     let keys = Arc::new(Mutex::new(HashSet::new()));
     {

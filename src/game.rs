@@ -1,10 +1,10 @@
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 
-pub type GameInt = u16;
+pub type GameInt = f32;
 pub type EntityId = usize;
 
-const MOVE_INCREMENT: GameInt = 1;
+const MOVE_INCREMENT: GameInt = 1.0;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
 const IMMOVEABLE_OBJECT: EntityId = 2;
@@ -12,7 +12,7 @@ const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
 const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: GameInt,
     pub y: GameInt,
@@ -94,13 +94,13 @@ pub struct Game {
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
-        let square1 = Rectangle::new(Point::new(0, 0), square_side_length, square_side_length);
+        let square1 = Rectangle::new(Point::new(0., 0.), square_side_length, square_side_length);
         let square2 = Rectangle::new(
-            Point::new(0, bottom_right.y - square_side_length),
+            Point::new(0., bottom_right.y - square_side_length),
             square_side_length,
             square_side_length,
         );
-        let square3 = Rectangle::new(bottom_right / 2, square_side_length, square_side_length);
+        let square3 = Rectangle::new(bottom_right / 2., square_side_length, square_side_length);
         Game {
             bottom_right,
             positions: vec![square1, square2, square3],
@@ -127,7 +127,7 @@ impl Game {
         forward(&mut self.positions[entity], MOVE_INCREMENT, game_width);
         let mut entity_segments = vec![];
         self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
-        let mut overlap = 0;
+        let mut overlap = 0f32;
         for id in 0..self.positions.len() {
             if id == entity {
                 continue;
@@ -135,7 +135,7 @@ impl Game {
             let entity_overlap = entity_segments
                 .iter()
                 .map(|entity_segment| {
-                    let mut overlap = 0;
+                    let mut overlap = 0f32;
                     self.positions[id].segments(bottom_right, |r| {
                         match entity_segment.overlap(&r) {
                             Some(r) => overlap = overlap.max(get_overlap(&r)),
@@ -144,8 +144,8 @@ impl Game {
                     });
                     overlap
                 })
-                .max();
-            if let Some(entity_overlap) = entity_overlap.filter(|overlap| *overlap > 0) {
+                .fold(0f32, |first, second| first.max(second));
+            if entity_overlap > 0. {
                 if self.moveable[id] {
                     let pushed = self.move_entity(id, get_overlap, forward, backward);
                     overlap = overlap.max(entity_overlap - pushed);
@@ -154,7 +154,7 @@ impl Game {
                 }
             }
         }
-        if overlap > 0 {
+        if overlap > 0. {
             backward(&mut self.positions[entity], overlap, game_width);
         }
         MOVE_INCREMENT - overlap
@@ -240,7 +240,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
@@ -303,7 +303,7 @@ impl Rectangle {
             Rectangle {
                 top_left: Point {
                     x: self.top_left.x,
-                    y: 0,
+                    y: 0.,
                 },
                 width: self.width,
                 height: bottom_overflow,
@@ -314,7 +314,7 @@ impl Rectangle {
             let right_overflow = my_bottom_right.x - bottom_right.x;
             Rectangle {
                 top_left: Point {
-                    x: 0,
+                    x: 0.,
                     y: self.top_left.y,
                 },
                 width: right_overflow,
@@ -354,7 +354,7 @@ fn my_rectangle_segments_no_overflow() {
         width: 5,
         height: 5,
     };
-    let mut expected_recs = vec![Rectangle::new(Point::new(5, 5), 5, 5)];
+    let mut expected_recs = vec![Rectangle::new(Point::new(5., 5.), 5, 5)];
     rect.segments(Point { x: 10, y: 10 }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
@@ -374,8 +374,8 @@ fn my_rectangle_segments_overflow() {
         height: 5,
     };
     let mut expected_recs = vec![
-        Rectangle::new(Point::new(5, 5), 2, 5),
-        Rectangle::new(Point::new(0, 5), 3, 5),
+        Rectangle::new(Point::new(5., 5.), 2, 5),
+        Rectangle::new(Point::new(0., 5.), 3, 5),
     ];
     rect.segments(Point { x: 7, y: 10 }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
