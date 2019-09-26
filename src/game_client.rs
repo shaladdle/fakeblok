@@ -1,24 +1,24 @@
 use crate::game;
 use crate::rpc_service;
 use futures::future::TryFutureExt;
+use futures::Future;
 use futures::{channel::mpsc, stream::StreamExt};
 use log::{error, info};
 use piston_window::Input;
 use std::io;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
-use tokio::timer::Interval;
-use futures::Future;
 
 pub struct GameClient {
     game: Arc<Mutex<game::Game>>,
     inputs: mpsc::UnboundedSender<Input>,
 }
 
-async fn create_client(server_addr: &str) -> io::Result<(rpc_service::GameClient, impl Future<Output=()>)> {
+async fn create_client(
+    server_addr: &str,
+) -> io::Result<(rpc_service::GameClient, impl Future<Output = ()>)> {
     let server_addr = match server_addr.parse() {
         Ok(s) => s,
         // TODO: Can we also pass the parse error as the detailed error?
@@ -54,14 +54,8 @@ async fn repeated_poll_game_state(
     mut client: rpc_service::GameClient,
     game: Arc<Mutex<game::Game>>,
 ) {
-    while let Some(_) = Interval::new_interval(Duration::from_millis(100))
-        .next()
-        .await
-    {
-        match client.poll_game_state(context::current()).await {
-            Ok(new_game) => *game.lock().unwrap() = new_game,
-            Err(err) => error!("Error polling game state: {:?}", err),
-        }
+    while let Ok(new_game) = client.poll_game_state(context::current()).await {
+        *game.lock().unwrap() = new_game;
     }
 }
 

@@ -16,10 +16,11 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tarpc::server::{self, Channel};
 use tokio::runtime::current_thread;
+use tokio::sync::watch;
 
 async fn run_server(
     server_addr: SocketAddr,
-    game: Arc<Mutex<Game>>,
+    game: watch::Receiver<Game>,
     keys: Arc<Mutex<HashSet<Key>>>,
 ) -> io::Result<()> {
     let server = fakeblok::server::Server::new(game, keys);
@@ -32,11 +33,14 @@ async fn run_server(
         .map(server::BaseChannel::with_defaults)
         .map(move |channel| {
             info!("Cloning server");
-            let server = server.clone();
-            info!("Creating response future");
-            let result = channel.respond_with(server.serve()).execute();
-            info!("Done");
-            result
+            let peer_addr = channel.as_ref().peer_addr().unwrap();
+            let handler = server.new_handler_for_ip(peer_addr).unwrap();
+            let player_id = handler.player_id();
+            info!("Handler for player {} created", player_id);
+            async move {
+                channel.respond_with(handler.serve()).execute().await;
+                info!("Handler for player {} done", player_id);
+            }
         })
         .buffer_unordered(10)
         .for_each(|_| async {})
@@ -58,7 +62,7 @@ fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
     }
 }
 
-fn run_ui(game: Arc<Mutex<game::Game>>, keys: Arc<Mutex<HashSet<Key>>>) -> io::Result<()> {
+fn run_ui(mut game: game::Game, game_tx: watch::Sender<game::Game>, keys: Arc<Mutex<HashSet<Key>>>) -> io::Result<()> {
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow = WindowSettings::new("shapes", [512; 2])
         .exit_on_esc(true)
@@ -74,14 +78,13 @@ fn run_ui(game: Arc<Mutex<game::Game>>, keys: Arc<Mutex<HashSet<Key>>>) -> io::R
             Event::Loop(Loop::Render(_)) => {
                 window.draw_2d(&event, |c, g, _| {
                     clear([1.0; 4], g);
-                    let mut game = game.lock().unwrap().clone();
                     game.draw(c, g);
                 });
             }
             Event::Loop(ref lp) => {
-                let mut game = game.lock().unwrap();
                 let keys = keys.lock().unwrap();
                 process_loop(&mut game, lp, &keys);
+                game_tx.broadcast(game.clone()).unwrap();
             }
             _ => {}
         }
@@ -110,23 +113,23 @@ fn main() -> io::Result<()> {
         .parse()
         .unwrap_or_else(|e| panic!(r#"--port value "{}" invalid: {}"#, port, e));
 
-    let game = Arc::new(Mutex::new(game::Game::new(
+    let game = game::Game::new(
         Point {
             x: 10_000,
             y: 10_000,
         },
         1000,
-    )));
+    );
     let keys = Arc::new(Mutex::new(HashSet::new()));
+    let (game_tx, game_rx) = watch::channel(game.clone());
     {
-        let game = game.clone();
         let keys = keys.clone();
         let server_addr: SocketAddr = ([0, 0, 0, 0u8], port).into();
         std::thread::spawn(move || {
             let mut runtime = current_thread::Runtime::new().unwrap();
             info!("Start server");
             runtime.block_on(async {
-                if let Err(err) = run_server(server_addr, game, keys).await {
+                if let Err(err) = run_server(server_addr, game_rx, keys).await {
                     error!("Error run_server_a: {:?}", err);
                 }
             });
@@ -135,6 +138,6 @@ fn main() -> io::Result<()> {
         });
     }
     info!("Start ui");
-    run_ui(game, keys)?;
+    run_ui(game, game_tx, keys)?;
     Ok(())
 }
