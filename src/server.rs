@@ -2,12 +2,11 @@ use crate::game;
 use crate::rpc_service;
 use futures::future::{self, Ready};
 use log::debug;
-use piston_window::{Button, ButtonArgs, ButtonState, Input, Key};
-use std::collections::HashSet;
+use piston_window::{Button, ButtonArgs, ButtonState, Input};
 use std::sync::{Arc, Mutex};
 use tarpc::context;
 
-fn process_input(keys: &mut HashSet<Key>, input: &Input) {
+fn process_input(game: &mut game::Game, input: &Input) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -15,10 +14,10 @@ fn process_input(keys: &mut HashSet<Key>, input: &Input) {
             ..
         }) => match state {
             ButtonState::Press => {
-                keys.insert(*key);
+                let _ = game.process_key_press(key);
             }
             ButtonState::Release => {
-                keys.remove(key);
+                let _ = game.process_key_release(key);
             }
         },
         _ => {}
@@ -28,12 +27,11 @@ fn process_input(keys: &mut HashSet<Key>, input: &Input) {
 #[derive(Clone)]
 pub struct Server {
     game: Arc<Mutex<game::Game>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
 }
 
 impl Server {
-    pub fn new(game: Arc<Mutex<game::Game>>, keys: Arc<Mutex<HashSet<Key>>>) -> Self {
-        Server { game, keys }
+    pub fn new(game: Arc<Mutex<game::Game>>) -> Self {
+        Server { game }
     }
 }
 
@@ -42,8 +40,8 @@ impl rpc_service::Game for Server {
 
     fn push_input(self, _: context::Context, input: Input) -> Self::PushInputFut {
         debug!("push_input({:?})", input);
-        let mut keys = self.keys.lock().unwrap();
-        process_input(&mut keys, &input);
+        let mut game = self.game.lock().unwrap();
+        process_input(&mut game, &input);
         future::ready(())
     }
 

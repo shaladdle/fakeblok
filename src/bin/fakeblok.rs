@@ -3,15 +3,14 @@ use fakeblok::game::Game;
 use fakeblok::game_client;
 use log::info;
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use pretty_env_logger;
-use std::collections::HashSet;
 use std::io;
 use tokio::runtime::Runtime;
 
-fn process_input(keys: &mut HashSet<Key>, input: &Input) {
+fn process_input(game: &mut Game, input: &Input) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -19,24 +18,21 @@ fn process_input(keys: &mut HashSet<Key>, input: &Input) {
             ..
         }) => match state {
             ButtonState::Press => {
-                keys.insert(*key);
+                let _ = game.process_key_press(key);
             }
             ButtonState::Release => {
-                keys.remove(key);
+                let _ = game.process_key_release(key);
             }
         },
         _ => {}
     }
 }
 
-fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
+fn process_loop(game: &mut Game, lp: &Loop) {
     match lp {
         Loop::Idle(_) => {}
         Loop::Update(_) => {
             game.tick();
-            for key in keys {
-                let _ = game.process_key(key);
-            }
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
@@ -57,11 +53,10 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
     let mut events = Events::new(EventSettings::new().ups(1000));
     info!("start!");
     let game = client.get_game();
-    let mut keys = HashSet::new();
     while let Some(event) = events.next(&mut window) {
         match event {
             Event::Input(ref input, _) => {
-                process_input(&mut keys, input);
+                process_input(&mut game.lock().unwrap(), input);
                 send_keys_to_server(&mut client, input.clone());
             }
             Event::Loop(Loop::Render(_)) => {
@@ -72,7 +67,7 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
             }
             Event::Loop(ref lp) => {
                 let mut game = game.lock().unwrap();
-                process_loop(&mut game, lp, &keys);
+                process_loop(&mut game, lp);
             }
             _ => {}
         }

@@ -7,10 +7,9 @@ use futures::{
 };
 use log::{error, info};
 use piston_window::{
-    clear, Event, EventLoop, EventSettings, Events, Key, Loop, OpenGL, PistonWindow, WindowSettings,
+    clear, Event, EventLoop, EventSettings, Events, Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use pretty_env_logger;
-use std::collections::HashSet;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -20,9 +19,8 @@ use tokio::runtime::current_thread;
 async fn run_server(
     server_addr: SocketAddr,
     game: Arc<Mutex<Game>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
 ) -> io::Result<()> {
-    let server = fakeblok::server::Server::new(game, keys);
+    let server = fakeblok::server::Server::new(game);
 
     // tarpc_json_transport is provided by the associated crate tarpc-json-transport. It makes it easy
     // to start up a serde-powered json serialization strategy over TCP.
@@ -54,28 +52,24 @@ async fn run_server(
 async fn run_server_a(
     server_addr: SocketAddr,
     game: Arc<Mutex<Game>>,
-    keys: Arc<Mutex<HashSet<Key>>>,
 ) {
-    if let Err(err) = run_server(server_addr, game, keys).await {
+    if let Err(err) = run_server(server_addr, game).await {
         error!("Error run_server_a: {:?}", err);
     }
 }
 
-fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
+fn process_loop(game: &mut Game, lp: &Loop) {
     match lp {
         Loop::Idle(_) => {}
         Loop::Update(_) => {
             game.tick();
-            for key in keys {
-                let _ = game.process_key(key);
-            }
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
     }
 }
 
-fn run_ui(game: Arc<Mutex<game::Game>>, keys: Arc<Mutex<HashSet<Key>>>) -> io::Result<()> {
+fn run_ui(game: Arc<Mutex<game::Game>>) -> io::Result<()> {
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow = WindowSettings::new("shapes", [512; 2])
         .exit_on_esc(true)
@@ -97,8 +91,7 @@ fn run_ui(game: Arc<Mutex<game::Game>>, keys: Arc<Mutex<HashSet<Key>>>) -> io::R
             }
             Event::Loop(ref lp) => {
                 let mut game = game.lock().unwrap();
-                let keys = keys.lock().unwrap();
-                process_loop(&mut game, lp, &keys);
+                process_loop(&mut game, lp);
             }
             _ => {}
         }
@@ -134,20 +127,18 @@ fn main() -> io::Result<()> {
         },
         1000.,
     )));
-    let keys = Arc::new(Mutex::new(HashSet::new()));
     {
         let game = game.clone();
-        let keys = keys.clone();
         let server_addr: SocketAddr = ([0, 0, 0, 0u8], port).into();
         std::thread::spawn(move || {
             let mut runtime = current_thread::Runtime::new().unwrap();
             info!("Start server");
-            runtime.block_on(run_server_a(server_addr, game, keys));
+            runtime.block_on(run_server_a(server_addr, game));
             info!("Server done");
             runtime.run().unwrap();
         });
     }
     info!("Start ui");
-    run_ui(game, keys)?;
+    run_ui(game)?;
     Ok(())
 }

@@ -213,16 +213,30 @@ impl Game {
         delta - overlap
     }
 
-    pub fn process_key(&mut self, key: &Key) -> Result<Point, InvalidKeyError> {
+    pub fn process_key_press(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
         Ok(match key {
-            &Key::W => self.move_entity(SQUARE_1, Point::new(0., -1.)),
-            &Key::A => self.move_entity(SQUARE_1, Point::new(-1., 0.)),
-            &Key::S => self.move_entity(SQUARE_1, Point::new(0., 1.)),
-            &Key::D => self.move_entity(SQUARE_1, Point::new(1., 0.)),
-            &Key::Up => self.move_entity(SQUARE_2, Point::new(0., -1.)),
-            &Key::Left => self.move_entity(SQUARE_2, Point::new(-1., 0.)),
-            &Key::Down => self.move_entity(SQUARE_2, Point::new(0., 1.)),
-            &Key::Right => self.move_entity(SQUARE_2, Point::new(1., 0.)),
+            &Key::W => self.velocities[SQUARE_1].y = -1.,
+            &Key::A => self.velocities[SQUARE_1].x = -1.,
+            &Key::S => self.velocities[SQUARE_1].y = 1.,
+            &Key::D => self.velocities[SQUARE_1].x = 1.,
+            &Key::Up => self.velocities[SQUARE_2].y = -1.,
+            &Key::Left => self.velocities[SQUARE_2].x = -1.,
+            &Key::Down => self.velocities[SQUARE_2].y = 1.,
+            &Key::Right => self.velocities[SQUARE_2].x = 1.,
+            _ => return Err(InvalidKeyError),
+        })
+    }
+
+    pub fn process_key_release(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
+        Ok(match key {
+            &Key::W => self.velocities[SQUARE_1].y = 0.,
+            &Key::A => self.velocities[SQUARE_1].x = 0.,
+            &Key::S => self.velocities[SQUARE_1].y = 0.,
+            &Key::D => self.velocities[SQUARE_1].x = 0.,
+            &Key::Up => self.velocities[SQUARE_2].y = 0.,
+            &Key::Left => self.velocities[SQUARE_2].x = 0.,
+            &Key::Down => self.velocities[SQUARE_2].y = 0.,
+            &Key::Right => self.velocities[SQUARE_2].x = 0.,
             _ => return Err(InvalidKeyError),
         })
     }

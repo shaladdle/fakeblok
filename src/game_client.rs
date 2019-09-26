@@ -45,7 +45,7 @@ async fn push_inputs(
     mut inputs: mpsc::UnboundedReceiver<Input>,
 ) {
     while let Some(input) = inputs.next().await {
-        debug!("push_input({:?})", input);
+        info!("push_input({:?})", input);
         if let Err(err) = client.push_input(context::current(), input.clone()).await {
             error!("Error setting keys, {:?}: {:?}", input, err);
         }
