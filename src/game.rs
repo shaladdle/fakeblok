@@ -5,7 +5,6 @@ pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
-
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
@@ -178,11 +177,7 @@ impl Game {
             .fold(Point::default(), |first, second| first.max(second))
     }
 
-    pub fn move_entity(
-        &mut self,
-        entity: EntityId,
-        delta: Point,
-    ) -> Point {
+    pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
         let game_width = self.width();
         let game_height = self.height();
         let bottom_right = self.bottom_right;

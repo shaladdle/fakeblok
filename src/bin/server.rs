@@ -16,10 +16,7 @@ use std::sync::{Arc, Mutex};
 use tarpc::server::{self, Channel};
 use tokio::runtime::current_thread;
 
-async fn run_server(
-    server_addr: SocketAddr,
-    game: Arc<Mutex<Game>>,
-) -> io::Result<()> {
+async fn run_server(server_addr: SocketAddr, game: Arc<Mutex<Game>>) -> io::Result<()> {
     let server = fakeblok::server::Server::new(game);
 
     // tarpc_json_transport is provided by the associated crate tarpc-json-transport. It makes it easy
@@ -49,10 +46,7 @@ async fn run_server(
     Ok(())
 }
 
-async fn run_server_a(
-    server_addr: SocketAddr,
-    game: Arc<Mutex<Game>>,
-) {
+async fn run_server_a(server_addr: SocketAddr, game: Arc<Mutex<Game>>) {
     if let Err(err) = run_server(server_addr, game).await {
         error!("Error run_server_a: {:?}", err);
     }

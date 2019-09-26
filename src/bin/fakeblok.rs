@@ -3,8 +3,8 @@ use fakeblok::game::Game;
 use fakeblok::game_client;
 use log::info;
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input,
-    Loop, OpenGL, PistonWindow, WindowSettings,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Loop,
+    OpenGL, PistonWindow, WindowSettings,
 };
 use pretty_env_logger;
 use std::io;
