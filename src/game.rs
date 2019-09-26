@@ -196,17 +196,44 @@ impl Game {
         );
     }
 
-    pub fn process_key(&mut self, key: &Key) {
+    /// Modifies the game state according to the given keypress
+    ///
+    /// Returns: true if the game state was modified, false otherwise.
+    pub fn process_key(&mut self, key: &Key) -> bool {
         match key {
-            &Key::W => self.move_entity_up(SQUARE_1),
-            &Key::A => self.move_entity_left(SQUARE_1),
-            &Key::S => self.move_entity_down(SQUARE_1),
-            &Key::D => self.move_entity_right(SQUARE_1),
-            &Key::Up => self.move_entity_up(SQUARE_2),
-            &Key::Left => self.move_entity_left(SQUARE_2),
-            &Key::Down => self.move_entity_down(SQUARE_2),
-            &Key::Right => self.move_entity_right(SQUARE_2),
-            _ => (),
+            &Key::W => {
+                self.move_entity_up(SQUARE_1);
+                true
+            }
+            &Key::A => {
+                self.move_entity_left(SQUARE_1);
+                true
+            }
+            &Key::S => {
+                self.move_entity_down(SQUARE_1);
+                true
+            }
+            &Key::D => {
+                self.move_entity_right(SQUARE_1);
+                true
+            }
+            &Key::Up => {
+                self.move_entity_up(SQUARE_2);
+                true
+            }
+            &Key::Left => {
+                self.move_entity_left(SQUARE_2);
+                true
+            }
+            &Key::Down => {
+                self.move_entity_down(SQUARE_2);
+                true
+            }
+            &Key::Right => {
+                self.move_entity_right(SQUARE_2);
+                true
+            }
+            _ => false,
         }
     }
 

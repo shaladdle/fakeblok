@@ -48,18 +48,20 @@ async fn run_server(
     Ok(())
 }
 
-fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
+fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) -> bool {
+    let mut modified = false;
     match lp {
         Loop::Idle(_) => {}
         Loop::Update(_) => {
             game.tick();
             for key in keys {
-                game.process_key(key);
+                modified = modified || game.process_key(key);
             }
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
     }
+    modified
 }
 
 fn run_ui(mut game: game::Game, game_tx: watch::Sender<game::Game>, keys: Arc<Mutex<HashSet<Key>>>) -> io::Result<()> {

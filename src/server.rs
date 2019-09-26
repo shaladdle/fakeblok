@@ -102,7 +102,7 @@ impl rpc_service::Game for ConnectionHandler {
     fn poll_game_state(mut self, _: context::Context) -> Self::PollGameStateFut {
         async move {
             debug!("poll_game_state()");
-            let result = self.game_rx.recv().await.unwrap().clone();
+            let result = self.game_rx.recv().await.unwrap();
             debug!("poll_game_state() end");
             result
         }
