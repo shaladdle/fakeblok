@@ -1,4 +1,4 @@
-use piston_window::{context::Context, rectangle, types, G2d, Key};
+use piston_window::{context::Context, Transformed, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 
 pub type GameInt = f32;
@@ -245,16 +245,16 @@ impl Game {
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
-        let [x, y] = c.viewport.unwrap().window_size;
+        let [x, y] = c.get_view_size();
+        let transform = c.transform.scale(x, y);
         for (i, entity) in self.entities().iter().enumerate() {
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
                     rect.scale(
-                        x / self.bottom_right.x as f64,
-                        y / self.bottom_right.y as f64,
-                    ),
-                    c.transform,
+                        1. / self.bottom_right.x as f64,
+                        1. / self.bottom_right.y as f64),
+                    transform,
                     g,
                 );
             });

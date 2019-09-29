@@ -44,10 +44,10 @@ fn process_loop(game: &mut Game, lp: &Loop) {
 }
 
 fn run_ui(server_addr: &str) -> io::Result<()> {
-    let opengl = OpenGL::V3_2;
-    let mut window: PistonWindow = WindowSettings::new("shapes", [512; 2])
+    let mut resolution = [512.; 2];
+    let mut window: PistonWindow = WindowSettings::new("shapes", resolution)
         .exit_on_esc(true)
-        .graphics_api(opengl)
+        .graphics_api(OpenGL::V3_2)
         .build()
         .unwrap();
     window.set_lazy(true);
@@ -60,10 +60,18 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
     while let Some(event) = events.next(&mut window) {
         match event {
             Event::Input(ref input, _) => {
-                process_input(&mut game.lock().unwrap(), input);
-                send_keys_to_server(&mut client, input.clone());
+                process_input(&mut game.lock().unwrap(), input, &mut client);
             }
-            Event::Loop(Loop::Render(_)) => {
+            Event::Loop(Loop::Render(args)) => {
+                if resolution != args.window_size {
+                    info!("Resizing {:?} => {:?}", resolution, args.window_size);
+                    resolution = args.window_size;
+                    window = WindowSettings::new("shapes", resolution)
+                        .exit_on_esc(true)
+                        .graphics_api(OpenGL::V3_2)
+                        .build()
+                        .unwrap();
+                }
                 window.draw_2d(&event, |c, g, _| {
                     clear([1.0; 4], g);
                     game.lock().unwrap().clone().draw(c, g);
