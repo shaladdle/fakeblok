@@ -35,8 +35,8 @@ fn process_input(game: &mut Game, input: &Input, client: &mut game_client::GameC
 fn process_loop(game: &mut Game, lp: &Loop) {
     match lp {
         Loop::Idle(_) => {}
-        Loop::Update(_) => {
-            game.tick();
+        Loop::Update(args) => {
+            game.tick(args.dt as f32);
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),

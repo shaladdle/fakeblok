@@ -55,8 +55,8 @@ async fn run_server_a(server_addr: SocketAddr, game: Arc<Mutex<Game>>) {
 fn process_loop(game: &mut Game, lp: &Loop) {
     match lp {
         Loop::Idle(_) => {}
-        Loop::Update(_) => {
-            game.tick();
+        Loop::Update(args) => {
+            game.tick(args.dt as f32);
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
@@ -116,10 +116,10 @@ fn main() -> io::Result<()> {
 
     let game = Arc::new(Mutex::new(game::Game::new(
         Point {
-            x: 10_000.,
-            y: 10_000.,
+            x: 512.,
+            y: 512.,
         },
-        1000.,
+        50.,
     )));
     {
         let game = game.clone();

@@ -1,10 +1,11 @@
-use piston_window::{context::Context, Transformed, rectangle, types, G2d, Key};
+use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 
 pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
+const MOVE_VELOCITY: f32 = 35.;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
@@ -152,7 +153,7 @@ impl Game {
         Game {
             bottom_right,
             positions: vec![square1, square2, square3],
-            velocities: vec![Point::default(), Point::default(), Point::new(0., -1.)],
+            velocities: vec![Point::default(), Point::default(), Point::new(0., -1. * MOVE_VELOCITY)],
             moveable: vec![true, true, false],
             colors: vec![BLACK, RED, GREEN],
         }
@@ -210,14 +211,14 @@ impl Game {
 
     pub fn process_key_press(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
         Ok(match key {
-            &Key::W => self.velocities[SQUARE_1].y = -1.,
-            &Key::A => self.velocities[SQUARE_1].x = -1.,
-            &Key::S => self.velocities[SQUARE_1].y = 1.,
-            &Key::D => self.velocities[SQUARE_1].x = 1.,
-            &Key::Up => self.velocities[SQUARE_2].y = -1.,
-            &Key::Left => self.velocities[SQUARE_2].x = -1.,
-            &Key::Down => self.velocities[SQUARE_2].y = 1.,
-            &Key::Right => self.velocities[SQUARE_2].x = 1.,
+            &Key::W => self.velocities[SQUARE_1].y = -1. * MOVE_VELOCITY,
+            &Key::A => self.velocities[SQUARE_1].x = -1. * MOVE_VELOCITY,
+            &Key::S => self.velocities[SQUARE_1].y = 1. * MOVE_VELOCITY,
+            &Key::D => self.velocities[SQUARE_1].x = 1. * MOVE_VELOCITY,
+            &Key::Up => self.velocities[SQUARE_2].y = -1. * MOVE_VELOCITY,
+            &Key::Left => self.velocities[SQUARE_2].x = -1. * MOVE_VELOCITY,
+            &Key::Down => self.velocities[SQUARE_2].y = 1. * MOVE_VELOCITY,
+            &Key::Right => self.velocities[SQUARE_2].x = 1. * MOVE_VELOCITY,
             _ => return Err(InvalidKeyError),
         })
     }
@@ -236,25 +237,21 @@ impl Game {
         })
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, dt: f32) {
         for entity in 0..self.velocities.len() {
             if !self.velocities[entity].is_origin() {
-                self.move_entity(entity, self.velocities[entity]);
+                self.move_entity(entity, self.velocities[entity] * dt);
             }
         }
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
-        let [x, y] = c.get_view_size();
-        let transform = c.transform.scale(x, y);
         for (i, entity) in self.entities().iter().enumerate() {
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
-                    rect.scale(
-                        1. / self.bottom_right.x as f64,
-                        1. / self.bottom_right.y as f64),
-                    transform,
+                    <_ as Into<types::Rectangle::<f64>>>::into(rect),
+                    c.transform,
                     g,
                 );
             });
@@ -355,13 +352,15 @@ impl Rectangle {
                 y: self.height,
             }
     }
+}
 
-    pub fn scale(&self, x_factor: f64, y_factor: f64) -> types::Rectangle<f64> {
+impl Into<types::Rectangle<f64>> for Rectangle {
+    fn into(self) -> types::Rectangle<f64> {
         [
-            self.top_left.x as f64 * x_factor,
-            self.top_left.y as f64 * y_factor,
-            self.width as f64 * x_factor,
-            self.height as f64 * y_factor,
+            self.top_left.x as f64,
+            self.top_left.y as f64,
+            self.width as f64,
+            self.height as f64,
         ]
     }
 }
