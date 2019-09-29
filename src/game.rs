@@ -240,7 +240,8 @@ impl Game {
     pub fn tick(&mut self, dt: f32) {
         for entity in 0..self.velocities.len() {
             if !self.velocities[entity].is_origin() {
-                self.move_entity(entity, self.velocities[entity] * dt);
+                self.move_entity(entity, self.velocities[entity].at_y(0.) * dt);
+                self.move_entity(entity, self.velocities[entity].at_x(0.) * dt);
             }
         }
     }
