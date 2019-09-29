@@ -10,7 +10,7 @@ use pretty_env_logger;
 use std::io;
 use tokio::runtime::Runtime;
 
-fn process_input(game: &mut Game, input: &Input) {
+fn process_input(game: &mut Game, input: &Input, client: &mut game_client::GameClient) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -18,10 +18,14 @@ fn process_input(game: &mut Game, input: &Input) {
             ..
         }) => match state {
             ButtonState::Press => {
-                let _ = game.process_key_press(key);
+                if let Ok(_) = game.process_key_press(key) {
+                    send_keys_to_server(client, input.clone());
+                }
             }
             ButtonState::Release => {
-                let _ = game.process_key_release(key);
+                if let Ok(_) = game.process_key_release(key) {
+                    send_keys_to_server(client, input.clone());
+                }
             }
         },
         _ => {}
