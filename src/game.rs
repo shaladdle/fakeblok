@@ -172,7 +172,7 @@ impl Game {
                 None,
                 None,
                 Some(Animation::Pendulum {
-                    midpoint: bottom_right / 50. + Point::new(0., 100.),
+                    midpoint: bottom_right / 50. + Point::new(100., 100.),
                 }),
             ],
             moveable: vec![true, true, false],
