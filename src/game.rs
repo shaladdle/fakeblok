@@ -1,6 +1,6 @@
+use log::info;
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
-use log::info;
 
 pub type GameInt = f32;
 pub type EntityId = usize;
@@ -158,13 +158,23 @@ impl Game {
             square_side_length,
             square_side_length,
         );
-        let square3 = Rectangle::new(bottom_right / 50., square_side_length / 2., square_side_length / 2.);
+        let square3 = Rectangle::new(
+            bottom_right / 50.,
+            square_side_length / 2.,
+            square_side_length / 2.,
+        );
         Game {
             bottom_right,
             positions: vec![square1, square2, square3],
             velocities: vec![Point::default(), Point::default(), Point::default()],
             accelerations: vec![Point::default(), Point::default(), Point::default()],
-            animations: vec![None, None, Some(Animation::Pendulum { midpoint: bottom_right / 50. + Point::new(0., 100.) })],
+            animations: vec![
+                None,
+                None,
+                Some(Animation::Pendulum {
+                    midpoint: bottom_right / 50. + Point::new(0., 100.),
+                }),
+            ],
             moveable: vec![true, true, false],
             colors: vec![BLACK, RED, GREEN],
         }
@@ -189,7 +199,11 @@ impl Game {
             })
             .fold(Point::default(), |first, second| first.max(second));
 
-        if overlap.x > OVERLAP_MAX && overlap.y > OVERLAP_MAX { Some(overlap) } else { None }
+        if overlap.x > OVERLAP_MAX && overlap.y > OVERLAP_MAX {
+            Some(overlap)
+        } else {
+            None
+        }
     }
 
     pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
@@ -210,7 +224,10 @@ impl Game {
                 if self.moveable[id] {
                     let to_move = entity_overlap.min(delta.abs()).copysign(delta);
                     self.move_entity(id, to_move);
-                    overlap = overlap.max(self.entity_overlap(&entity_segments, id).unwrap_or_default());
+                    overlap = overlap.max(
+                        self.entity_overlap(&entity_segments, id)
+                            .unwrap_or_default(),
+                    );
                 } else {
                     overlap = overlap.max(entity_overlap)
                 }
@@ -275,12 +292,18 @@ impl Game {
         let [x, y] = c.get_view_size();
         for (i, entity) in self.entities().iter().enumerate() {
             let mut entity = entity.clone();
-            entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt - pov.x - pov_width / 2.) % self.width();
-            entity.top_left.y = (entity.top_left.y + self.height() + 0.5 as GameInt * y as GameInt - pov.y - pov_height / 2.) % self.height();
+            entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt
+                - pov.x
+                - pov_width / 2.)
+                % self.width();
+            entity.top_left.y = (entity.top_left.y + self.height() + 0.5 as GameInt * y as GameInt
+                - pov.y
+                - pov_height / 2.)
+                % self.height();
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
-                    <_ as Into<types::Rectangle::<f64>>>::into(rect),
+                    <_ as Into<types::Rectangle<f64>>>::into(rect),
                     c.transform,
                     g,
                 );
