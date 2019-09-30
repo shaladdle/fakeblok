@@ -250,7 +250,14 @@ impl Game {
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
+        let pov = self.positions[0].top_left;
+        let pov_width = self.positions[0].width;
+        let pov_height = self.positions[0].height;
+        let [x, y] = c.get_view_size();
         for (i, entity) in self.entities().iter().enumerate() {
+            let mut entity = entity.clone();
+            entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt - pov.x - pov_width / 2.) % self.width();
+            entity.top_left.y = (entity.top_left.y + self.height() + 0.5 as GameInt * y as GameInt - pov.y - pov_height / 2.) % self.height();
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],

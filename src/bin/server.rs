@@ -116,8 +116,8 @@ fn main() -> io::Result<()> {
 
     let game = Arc::new(Mutex::new(game::Game::new(
         Point {
-            x: 512.,
-            y: 512.,
+            x: 10_000.,
+            y: 500.,
         },
         50.,
     )));
