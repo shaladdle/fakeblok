@@ -1,4 +1,3 @@
-use log::info;
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 
@@ -147,6 +146,7 @@ pub struct Game {
     pub accelerations: Vec<Point>,
     pub animations: Vec<Option<Animation>>,
     pub moveable: Vec<bool>,
+    pub moved_this_action: Vec<bool>,
     pub colors: Vec<types::Rectangle<GameInt>>,
 }
 
@@ -172,10 +172,11 @@ impl Game {
                 None,
                 None,
                 Some(Animation::Pendulum {
-                    midpoint: bottom_right / 50. + Point::new(100., 100.),
+                    midpoint: bottom_right / 50. + Point::new(100., 200.),
                 }),
             ],
             moveable: vec![true, true, false],
+            moved_this_action: vec![false; 3],
             colors: vec![BLACK, RED, GREEN],
         }
     }
@@ -184,9 +185,8 @@ impl Game {
         &self.positions
     }
 
-    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Option<Point> {
-        const OVERLAP_MAX: GameInt = 0.0001;
-        let overlap = entity_segments
+    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Point {
+        entity_segments
             .iter()
             .map(|entity_segment| {
                 let mut overlap = Point::default();
@@ -197,16 +197,18 @@ impl Game {
                 });
                 overlap
             })
-            .fold(Point::default(), |first, second| first.max(second));
+            .fold(Point::default(), |first, second| first.max(second))
+    }
 
-        if overlap.x > OVERLAP_MAX && overlap.y > OVERLAP_MAX {
-            Some(overlap)
-        } else {
-            None
+    pub fn start_move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
+        for moved in &mut self.moved_this_action {
+            *moved = false;
         }
+        self.move_entity(entity, delta)
     }
 
     pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
+        self.moved_this_action[entity] = true;
         let game_width = self.width();
         let game_height = self.height();
         let bottom_right = self.bottom_right;
@@ -216,26 +218,27 @@ impl Game {
         let mut overlap = Point::default();
         for id in 0..self.positions.len() {
             if id == entity {
-                continue;
+                continue
+            }
+            if self.moved_this_action[id] {
+                continue
             }
 
-            if let Some(entity_overlap) = self.entity_overlap(&entity_segments, id) {
-                info!("entity overlap({}, {}): {:?}", entity, id, entity_overlap);
-                if self.moveable[id] {
-                    let to_move = entity_overlap.min(delta.abs()).copysign(delta);
-                    self.move_entity(id, to_move);
-                    overlap = overlap.max(
-                        self.entity_overlap(&entity_segments, id)
-                            .unwrap_or_default(),
-                    );
-                } else {
-                    overlap = overlap.max(entity_overlap)
-                }
+            let entity_overlap = self.entity_overlap(&entity_segments, id);
+            if entity_overlap.x == 0. || entity_overlap.y == 0. {
+                continue
+            }
+            if self.moveable[id] {
+                let to_move = entity_overlap.min(delta.abs()).copysign(delta);
+                self.move_entity(id, to_move);
+                overlap = overlap.max(self.entity_overlap(&entity_segments, id));
+            } else {
+                overlap = overlap.max(entity_overlap)
             }
         }
-        if !overlap.is_origin() {
+        if overlap.x > 0. && overlap.y > 0. {
             let to_move = overlap.min(delta.abs()).copysign(delta) * -1.;
-            self.move_entity(entity, to_move);
+            self.positions[entity].move_(to_move, game_width, game_height);
         }
         delta - overlap
     }
@@ -272,8 +275,8 @@ impl Game {
         for entity in 0..self.velocities.len() {
             self.velocities[entity] += self.accelerations[entity] * dt;
             if !self.velocities[entity].is_origin() {
-                self.move_entity(entity, self.velocities[entity].at_y(0.) * dt);
-                self.move_entity(entity, self.velocities[entity].at_x(0.) * dt);
+                self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
+                self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
             }
             match self.animations[entity] {
                 Some(Animation::Pendulum { midpoint }) => {
@@ -430,7 +433,7 @@ fn my_rectangle_segments_no_overflow() {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
-                return;
+                return
             }
         }
         panic!("Expected one of {:?}; got {:?}", expected_recs, r);
@@ -452,7 +455,7 @@ fn my_rectangle_segments_overflow() {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
-                return;
+                return
             }
         }
         panic!("Expected one of {:?}; got {:?}", expected_recs, r);
