@@ -163,8 +163,9 @@ impl Game {
         &self.positions
     }
 
-    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Point {
-        entity_segments
+    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Option<Point> {
+        const OVERLAP_MAX: GameInt = 0.0001;
+        let overlap = entity_segments
             .iter()
             .map(|entity_segment| {
                 let mut overlap = Point::default();
@@ -175,7 +176,9 @@ impl Game {
                 });
                 overlap
             })
-            .fold(Point::default(), |first, second| first.max(second))
+            .fold(Point::default(), |first, second| first.max(second));
+
+        if overlap.x > OVERLAP_MAX && overlap.y > OVERLAP_MAX { Some(overlap) } else { None }
     }
 
     pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
@@ -190,13 +193,13 @@ impl Game {
             if id == entity {
                 continue;
             }
-            let entity_overlap = self.entity_overlap(&entity_segments, id);
 
-            if entity_overlap.x > 0. || entity_overlap.y > 0. {
+            if let Some(entity_overlap) = self.entity_overlap(&entity_segments, id) {
+                info!("entity overlap({}, {}): {:?}", entity, id, entity_overlap);
                 if self.moveable[id] {
                     let to_move = entity_overlap.min(delta.abs()).copysign(delta);
                     self.move_entity(id, to_move);
-                    overlap = overlap.max(self.entity_overlap(&entity_segments, id));
+                    overlap = overlap.max(self.entity_overlap(&entity_segments, id).unwrap_or_default());
                 } else {
                     overlap = overlap.max(entity_overlap)
                 }
