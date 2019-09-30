@@ -1,16 +1,23 @@
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
+use log::info;
 
 pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
-const MOVE_VELOCITY: f32 = 35.;
+const PENDULUM_FORCE: GameInt = 4.;
+const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
-const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
-const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
-const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
+const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
+const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
+const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Animation {
+    Pendulum { midpoint: Point },
+}
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -137,8 +144,10 @@ pub struct Game {
     pub bottom_right: Point,
     pub positions: Vec<Rectangle>,
     pub velocities: Vec<Point>,
+    pub accelerations: Vec<Point>,
+    pub animations: Vec<Option<Animation>>,
     pub moveable: Vec<bool>,
-    pub colors: Vec<types::Rectangle<f32>>,
+    pub colors: Vec<types::Rectangle<GameInt>>,
 }
 
 impl Game {
@@ -149,11 +158,13 @@ impl Game {
             square_side_length,
             square_side_length,
         );
-        let square3 = Rectangle::new(bottom_right / 2., square_side_length, square_side_length);
+        let square3 = Rectangle::new(bottom_right / 50., square_side_length / 2., square_side_length / 2.);
         Game {
             bottom_right,
             positions: vec![square1, square2, square3],
-            velocities: vec![Point::default(), Point::default(), Point::new(0., -1. * MOVE_VELOCITY)],
+            velocities: vec![Point::default(), Point::default(), Point::default()],
+            accelerations: vec![Point::default(), Point::default(), Point::default()],
+            animations: vec![None, None, Some(Animation::Pendulum { midpoint: bottom_right / 50. + Point::new(0., 100.) })],
             moveable: vec![true, true, false],
             colors: vec![BLACK, RED, GREEN],
         }
@@ -242,9 +253,17 @@ impl Game {
 
     pub fn tick(&mut self, dt: f32) {
         for entity in 0..self.velocities.len() {
+            self.velocities[entity] += self.accelerations[entity] * dt;
             if !self.velocities[entity].is_origin() {
                 self.move_entity(entity, self.velocities[entity].at_y(0.) * dt);
                 self.move_entity(entity, self.velocities[entity].at_x(0.) * dt);
+            }
+            match self.animations[entity] {
+                Some(Animation::Pendulum { midpoint }) => {
+                    self.accelerations[entity] =
+                        (midpoint - self.positions[entity].top_left) * PENDULUM_FORCE;
+                }
+                None => {}
             }
         }
     }
