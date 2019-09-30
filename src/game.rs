@@ -215,15 +215,15 @@ impl Game {
         let mut overlap = Point::default();
         for id in 0..self.positions.len() {
             if id == entity {
-                continue
+                continue;
             }
             if self.moved_this_action[id] {
-                continue
+                continue;
             }
 
             let entity_overlap = self.entity_overlap(&entity_segments, id);
             if entity_overlap.x == 0. || entity_overlap.y == 0. {
-                continue
+                continue;
             }
             if self.moveable[id] {
                 let to_move = entity_overlap.min(delta.abs()).copysign(delta);
@@ -437,7 +437,7 @@ fn my_rectangle_segments_no_overflow() {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
-                return
+                return;
             }
         }
         panic!("Expected one of {:?}; got {:?}", expected_recs, r);
@@ -459,7 +459,7 @@ fn my_rectangle_segments_overflow() {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
-                return
+                return;
             }
         }
         panic!("Expected one of {:?}; got {:?}", expected_recs, r);
