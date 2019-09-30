@@ -5,17 +5,18 @@ pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
-const PENDULUM_FORCE: GameInt = 4.;
+const PENDULUM_FORCE: GameInt = -4.;
 const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
+const SQUARE_3: EntityId = 2;
 const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
 const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
-    Pendulum { midpoint: Point },
+    Pendulum { distance: Point },
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -163,22 +164,18 @@ impl Game {
             square_side_length / 2.,
             square_side_length / 2.,
         );
-        Game {
+        let mut game = Game {
             bottom_right,
             positions: vec![square1, square2, square3],
             velocities: vec![Point::default(), Point::default(), Point::default()],
             accelerations: vec![Point::default(), Point::default(), Point::default()],
-            animations: vec![
-                None,
-                None,
-                Some(Animation::Pendulum {
-                    midpoint: bottom_right / 50. + Point::new(100., 200.),
-                }),
-            ],
+            animations: vec![None; 3],
             moveable: vec![true, true, false],
             moved_this_action: vec![false; 3],
             colors: vec![BLACK, RED, GREEN],
-        }
+        };
+        game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
+        game
     }
 
     pub fn entities(&self) -> &[Rectangle] {
@@ -271,17 +268,24 @@ impl Game {
         })
     }
 
+    fn init_pendulum(&mut self, entity: EntityId, midpoint: Point) {
+        let distance = self.positions[entity].top_left - midpoint;
+        self.animations[entity] = Some(Animation::Pendulum { distance });
+        self.accelerations[entity] = distance * PENDULUM_FORCE;
+    }
+
     pub fn tick(&mut self, dt: f32) {
         for entity in 0..self.velocities.len() {
-            self.velocities[entity] += self.accelerations[entity] * dt;
+            let mut delta = Point::default();
             if !self.velocities[entity].is_origin() {
-                self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
-                self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
+                delta += self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
+                delta += self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
             }
+            self.velocities[entity] += self.accelerations[entity] * dt;
             match self.animations[entity] {
-                Some(Animation::Pendulum { midpoint }) => {
-                    self.accelerations[entity] =
-                        (midpoint - self.positions[entity].top_left) * PENDULUM_FORCE;
+                Some(Animation::Pendulum { ref mut distance }) => {
+                    *distance += delta;
+                    self.accelerations[entity] = *distance * PENDULUM_FORCE;
                 }
                 None => {}
             }
