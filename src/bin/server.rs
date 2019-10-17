@@ -55,10 +55,12 @@ async fn run_server(
 }
 
 fn process_loop(game: &mut Game, lp: &Loop) -> bool {
-    let mut modified = false;
+    let modified = false;
     match lp {
         Loop::Idle(_) => {}
-        Loop::Update(_) => game.tick(),
+        Loop::Update(args) => {
+            game.tick(args.dt as f32);
+        }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
     }
@@ -120,9 +122,9 @@ fn main() -> io::Result<()> {
     let game = game::Game::new(
         Point {
             x: 10_000.,
-            y: 10_000.,
+            y: 500.,
         },
-        1000f32,
+        50.,
     );
     let (game_tx, game_rx) = watch::channel(game.clone());
     let game = Arc::new(Mutex::new(game));

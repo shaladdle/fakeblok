@@ -1,15 +1,23 @@
-use piston_window::{context::Context, rectangle, types, G2d, Key, Transformed};
+use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 
 pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
+const PENDULUM_FORCE: GameInt = -4.;
+const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
-const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
-const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
-const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
+const SQUARE_3: EntityId = 2;
+const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
+const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
+const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Animation {
+    Pendulum { distance: Point },
+}
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -136,8 +144,11 @@ pub struct Game {
     pub bottom_right: Point,
     pub positions: Vec<Rectangle>,
     pub velocities: Vec<Point>,
+    pub accelerations: Vec<Point>,
+    pub animations: Vec<Option<Animation>>,
     pub moveable: Vec<bool>,
-    pub colors: Vec<types::Rectangle<f32>>,
+    pub moved_this_action: Vec<bool>,
+    pub colors: Vec<types::Rectangle<GameInt>>,
 }
 
 impl Game {
@@ -148,14 +159,23 @@ impl Game {
             square_side_length,
             square_side_length,
         );
-        let square3 = Rectangle::new(bottom_right / 2., square_side_length, square_side_length);
-        Game {
+        let square3 = Rectangle::new(
+            bottom_right / 50.,
+            square_side_length / 2.,
+            square_side_length / 2.,
+        );
+        let mut game = Game {
             bottom_right,
             positions: vec![square1, square2, square3],
-            velocities: vec![Point::default(), Point::default(), Point::new(0., -1.)],
+            velocities: vec![Point::default(), Point::default(), Point::default()],
+            accelerations: vec![Point::default(), Point::default(), Point::default()],
+            animations: vec![None; 3],
             moveable: vec![true, true, false],
+            moved_this_action: vec![false; 3],
             colors: vec![BLACK, RED, GREEN],
-        }
+        };
+        game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
+        game
     }
 
     pub fn entities(&self) -> &[Rectangle] {
@@ -177,7 +197,15 @@ impl Game {
             .fold(Point::default(), |first, second| first.max(second))
     }
 
+    pub fn start_move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
+        for moved in &mut self.moved_this_action {
+            *moved = false;
+        }
+        self.move_entity(entity, delta)
+    }
+
     pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
+        self.moved_this_action[entity] = true;
         let game_width = self.width();
         let game_height = self.height();
         let bottom_right = self.bottom_right;
@@ -189,35 +217,39 @@ impl Game {
             if id == entity {
                 continue;
             }
-            let entity_overlap = self.entity_overlap(&entity_segments, id);
+            if self.moved_this_action[id] {
+                continue;
+            }
 
-            if entity_overlap.x > 0. || entity_overlap.y > 0. {
-                if self.moveable[id] {
-                    let to_move = entity_overlap.min(delta.abs()).copysign(delta);
-                    self.move_entity(id, to_move);
-                    overlap = overlap.max(self.entity_overlap(&entity_segments, id));
-                } else {
-                    overlap = overlap.max(entity_overlap)
-                }
+            let entity_overlap = self.entity_overlap(&entity_segments, id);
+            if entity_overlap.x == 0. || entity_overlap.y == 0. {
+                continue;
+            }
+            if self.moveable[id] {
+                let to_move = entity_overlap.min(delta.abs()).copysign(delta);
+                self.move_entity(id, to_move);
+                overlap = overlap.max(self.entity_overlap(&entity_segments, id));
+            } else {
+                overlap = overlap.max(entity_overlap)
             }
         }
-        if !overlap.is_origin() {
+        if overlap.x > 0. && overlap.y > 0. {
             let to_move = overlap.min(delta.abs()).copysign(delta) * -1.;
-            self.move_entity(entity, to_move);
+            self.positions[entity].move_(to_move, game_width, game_height);
         }
         delta - overlap
     }
 
     pub fn process_key_press(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
         Ok(match key {
-            &Key::W => self.velocities[SQUARE_1].y = -1.,
-            &Key::A => self.velocities[SQUARE_1].x = -1.,
-            &Key::S => self.velocities[SQUARE_1].y = 1.,
-            &Key::D => self.velocities[SQUARE_1].x = 1.,
-            &Key::Up => self.velocities[SQUARE_2].y = -1.,
-            &Key::Left => self.velocities[SQUARE_2].x = -1.,
-            &Key::Down => self.velocities[SQUARE_2].y = 1.,
-            &Key::Right => self.velocities[SQUARE_2].x = 1.,
+            &Key::W => self.velocities[SQUARE_1].y = -1. * MOVE_VELOCITY,
+            &Key::A => self.velocities[SQUARE_1].x = -1. * MOVE_VELOCITY,
+            &Key::S => self.velocities[SQUARE_1].y = 1. * MOVE_VELOCITY,
+            &Key::D => self.velocities[SQUARE_1].x = 1. * MOVE_VELOCITY,
+            &Key::Up => self.velocities[SQUARE_2].y = -1. * MOVE_VELOCITY,
+            &Key::Left => self.velocities[SQUARE_2].x = -1. * MOVE_VELOCITY,
+            &Key::Down => self.velocities[SQUARE_2].y = 1. * MOVE_VELOCITY,
+            &Key::Right => self.velocities[SQUARE_2].x = 1. * MOVE_VELOCITY,
             _ => return Err(InvalidKeyError),
         })
     }
@@ -236,26 +268,50 @@ impl Game {
         })
     }
 
-    pub fn tick(&mut self) {
+    fn init_pendulum(&mut self, entity: EntityId, midpoint: Point) {
+        let distance = self.positions[entity].top_left - midpoint;
+        self.animations[entity] = Some(Animation::Pendulum { distance });
+        self.accelerations[entity] = distance * PENDULUM_FORCE;
+    }
+
+    pub fn tick(&mut self, dt: f32) {
         for entity in 0..self.velocities.len() {
+            let mut delta = Point::default();
             if !self.velocities[entity].is_origin() {
-                self.move_entity(entity, self.velocities[entity]);
+                delta += self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
+                delta += self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
+            }
+            self.velocities[entity] += self.accelerations[entity] * dt;
+            match self.animations[entity] {
+                Some(Animation::Pendulum { ref mut distance }) => {
+                    *distance += delta;
+                    self.accelerations[entity] = *distance * PENDULUM_FORCE;
+                }
+                None => {}
             }
         }
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
+        let pov = self.positions[0].top_left;
+        let pov_width = self.positions[0].width;
+        let pov_height = self.positions[0].height;
         let [x, y] = c.get_view_size();
-        let transform = c.transform.scale(x, y);
         for (i, entity) in self.entities().iter().enumerate() {
+            let mut entity = entity.clone();
+            entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt
+                - pov.x
+                - pov_width / 2.)
+                % self.width();
+            entity.top_left.y = (entity.top_left.y + self.height() + 0.5 as GameInt * y as GameInt
+                - pov.y
+                - pov_height / 2.)
+                % self.height();
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
-                    rect.scale(
-                        1. / self.bottom_right.x as f64,
-                        1. / self.bottom_right.y as f64,
-                    ),
-                    transform,
+                    <_ as Into<types::Rectangle<f64>>>::into(rect),
+                    c.transform,
                     g,
                 );
             });
@@ -356,13 +412,15 @@ impl Rectangle {
                 y: self.height,
             }
     }
+}
 
-    pub fn scale(&self, x_factor: f64, y_factor: f64) -> types::Rectangle<f64> {
+impl Into<types::Rectangle<f64>> for Rectangle {
+    fn into(self) -> types::Rectangle<f64> {
         [
-            self.top_left.x as f64 * x_factor,
-            self.top_left.y as f64 * y_factor,
-            self.width as f64 * x_factor,
-            self.height as f64 * y_factor,
+            self.top_left.x as f64,
+            self.top_left.y as f64,
+            self.width as f64,
+            self.height as f64,
         ]
     }
 }
