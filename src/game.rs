@@ -276,7 +276,7 @@ impl Game {
             velocity: Point::default(),
             acceleration: Point::default(),
             animation: None,
-            moveable: false,
+            moveable: true,
             moved_this_action: false,
             color: BLACK,
         })
