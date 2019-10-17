@@ -1,75 +1,50 @@
-use crate::game;
+use crate::game::{self, EntityId};
 use crate::rpc_service;
 use futures::future::{self, Ready};
 use futures::prelude::*;
 use log::debug;
 use piston_window::{Button, ButtonArgs, ButtonState, Input};
-use std::collections::{hash_map::Entry, HashMap};
+use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::{io, net};
 use tarpc::context;
 use tokio::sync::watch;
 
-pub type PlayerId = usize;
+// const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
 
 pub struct Server {
-    players: Mutex<HashMap<net::SocketAddr, PlayerId>>,
-    player_ids: Mutex<slab::Slab<()>>,
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
 }
 
 impl Server {
     pub fn new(game: Arc<Mutex<game::Game>>, game_rx: watch::Receiver<game::Game>) -> Self {
-        let players = Mutex::new(HashMap::new());
-        let player_ids = Mutex::new(slab::Slab::with_capacity(100));
-        Server {
-            game,
-            players,
-            player_ids,
-            game_rx,
-        }
+        Server { game, game_rx }
     }
 
-    pub fn new_handler_for_ip(&self, peer_addr: net::SocketAddr) -> io::Result<ConnectionHandler> {
-        let player_id = if let Some(id) = self.get_or_create_player_id(peer_addr) {
-            id
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "There are too many players connected, please try again later.",
-            ));
-        };
+    pub fn new_handler(&self, entity_id: EntityId) -> io::Result<ConnectionHandler> {
         Ok(ConnectionHandler {
-            player_id: player_id,
+            entity_id,
             game: self.game.clone(),
             game_rx: self.game_rx.clone(),
         })
-    }
-
-    pub fn get_or_create_player_id(&self, peer_addr: net::SocketAddr) -> Option<PlayerId> {
-        match self.players.lock().unwrap().entry(peer_addr) {
-            Entry::Occupied(player_id) => Some(*player_id.get()),
-            Entry::Vacant(entry) => Some(*entry.insert({
-                let mut player_ids = self.player_ids.lock().unwrap();
-                if player_ids.len() == player_ids.capacity() {
-                    return None;
-                }
-                player_ids.insert(())
-            })),
-        }
     }
 }
 
 #[derive(Clone)]
 pub struct ConnectionHandler {
-    player_id: PlayerId,
+    entity_id: EntityId,
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
 }
 
 impl rpc_service::Game for ConnectionHandler {
+    type GetEntityIdFut = Ready<EntityId>;
+
+    fn get_entity_id(self, _: context::Context) -> Self::GetEntityIdFut {
+        future::ready(self.entity_id)
+    }
+
     type PushInputFut = Ready<()>;
 
     fn push_input(self, _: context::Context, input: Input) -> Self::PushInputFut {
@@ -82,10 +57,10 @@ impl rpc_service::Game for ConnectionHandler {
                 ..
             }) => match state {
                 ButtonState::Press => {
-                    let _ = game.process_key_press(&key);
+                    let _ = game.process_key_press(self.entity_id, &key);
                 }
                 ButtonState::Release => {
-                    let _ = game.process_key_release(&key);
+                    let _ = game.process_key_release(self.entity_id, &key);
                 }
             },
             _ => {}
@@ -107,7 +82,7 @@ impl rpc_service::Game for ConnectionHandler {
 }
 
 impl ConnectionHandler {
-    pub fn player_id(&self) -> PlayerId {
-        self.player_id
+    pub fn entity_id(&self) -> EntityId {
+        self.entity_id
     }
 }

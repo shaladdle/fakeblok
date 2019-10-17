@@ -1,5 +1,5 @@
 use clap::{App, Arg};
-use fakeblok::game::Game;
+use fakeblok::game::{EntityId, Game};
 use fakeblok::game_client;
 use log::info;
 use piston_window::{
@@ -10,7 +10,12 @@ use pretty_env_logger;
 use std::io;
 use tokio::runtime::Runtime;
 
-fn process_input(game: &mut Game, input: &Input, client: &mut game_client::GameClient) {
+fn process_input(
+    game: &mut Game,
+    id: EntityId,
+    input: &Input,
+    client: &mut game_client::GameClient,
+) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -18,12 +23,12 @@ fn process_input(game: &mut Game, input: &Input, client: &mut game_client::GameC
             ..
         }) => match state {
             ButtonState::Press => {
-                if let Ok(_) = game.process_key_press(key) {
+                if let Ok(_) = game.process_key_press(id, key) {
                     send_keys_to_server(client, input.clone());
                 }
             }
             ButtonState::Release => {
-                if let Ok(_) = game.process_key_release(key) {
+                if let Ok(_) = game.process_key_release(id, key) {
                     send_keys_to_server(client, input.clone());
                 }
             }
@@ -60,7 +65,7 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
     while let Some(event) = events.next(&mut window) {
         match event {
             Event::Input(ref input, _) => {
-                process_input(&mut game.lock().unwrap(), input, &mut client);
+                process_input(&mut game.lock().unwrap(), client.id, input, &mut client);
             }
             Event::Loop(Loop::Render(args)) => {
                 if resolution != args.window_size {
@@ -74,7 +79,7 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
                 }
                 window.draw_2d(&event, |c, g, _| {
                     clear([1.0; 4], g);
-                    game.lock().unwrap().clone().draw(c, g);
+                    game.lock().unwrap().clone().draw(client.id, c, g);
                 });
             }
             Event::Loop(ref lp) => {

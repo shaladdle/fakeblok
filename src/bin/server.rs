@@ -22,7 +22,7 @@ async fn run_server(
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<Game>,
 ) -> io::Result<()> {
-    let server = fakeblok::server::Server::new(game, game_rx);
+    let server = fakeblok::server::Server::new(game.clone(), game_rx);
 
     // tarpc_json_transport is provided by the associated crate tarpc-json-transport. It makes it easy
     // to start up a serde-powered json serialization strategy over TCP.
@@ -32,10 +32,13 @@ async fn run_server(
         .map(server::BaseChannel::with_defaults)
         .map(move |channel| {
             info!("Cloning server");
-            let peer_addr = channel.as_ref().peer_addr().unwrap();
-            let handler = server.new_handler_for_ip(peer_addr).unwrap();
-            let player_id = handler.player_id();
-            info!("Handler for player {} created", player_id);
+            let game = game.clone();
+            let entity_id = {
+                let mut game = game.lock().unwrap();
+                game.insert_new_player_square()
+            };
+            let handler = server.new_handler(entity_id).unwrap();
+            info!("Handler for player with entity id {} created", entity_id);
             async move {
                 info!("Creating response future");
                 let mut response_stream = channel.respond_with(handler.serve());
@@ -84,7 +87,7 @@ fn run_ui(game: Arc<Mutex<game::Game>>, game_tx: watch::Sender<game::Game>) -> i
                 window.draw_2d(&event, |c, g, _| {
                     clear([1.0; 4], g);
                     let mut game = game.lock().unwrap();
-                    game.draw(c, g);
+                    game.draw(0, c, g);
                 });
             }
             Event::Loop(ref lp) => {

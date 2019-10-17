@@ -1,4 +1,5 @@
 use crate::game;
+use crate::game::EntityId;
 use crate::rpc_service;
 use futures::future::TryFutureExt;
 use futures::Future;
@@ -12,6 +13,7 @@ use tarpc::context;
 use tokio::runtime::current_thread;
 
 pub struct GameClient {
+    pub id: EntityId,
     game: Arc<Mutex<game::Game>>,
     inputs: mpsc::UnboundedSender<Input>,
 }
@@ -66,6 +68,8 @@ impl GameClient {
         debug!("Creating client to {}", server_addr);
         let (mut client, dispatch) = runtime.block_on(create_client(server_addr))?;
         tokio::spawn(dispatch);
+        debug!("Getting entity id");
+        let id = runtime.block_on(client.get_entity_id(context::current()))?;
         debug!("Getting initial game state:");
         let game = runtime.block_on(client.poll_game_state(context::current()))?;
         let game = Arc::new(Mutex::new(game));
@@ -73,7 +77,7 @@ impl GameClient {
         let (inputs, rx) = mpsc::unbounded();
         tokio::spawn(repeated_poll_game_state(client.clone(), game.clone()));
         tokio::spawn(push_inputs(client, rx));
-        Ok(GameClient { game, inputs })
+        Ok(GameClient { id, game, inputs })
     }
 
     pub fn push_input(&mut self, input: Input) {

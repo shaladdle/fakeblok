@@ -8,12 +8,9 @@ pub struct InvalidKeyError;
 
 const PENDULUM_FORCE: GameInt = -4.;
 const MOVE_VELOCITY: GameInt = 50.;
-const SQUARE_1: EntityId = 0;
-const SQUARE_2: EntityId = 1;
-const SQUARE_3: EntityId = 2;
-const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
-const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
+const SQUARE_3: EntityId = 0;
 const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
+const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
@@ -142,6 +139,7 @@ impl std::ops::Div<GameInt> for Point {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Game {
+    square_side_length: GameInt,
     pub bottom_right: Point,
     #[serde(with = "serde_slab")]
     pub positions: Slab<Rectangle>,
@@ -160,14 +158,19 @@ pub struct Game {
 }
 
 mod serde_slab {
-    use std::{collections::HashMap, fmt};
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap, de::{MapAccess, Visitor}};
+    use serde::{
+        de::{MapAccess, Visitor},
+        ser::SerializeMap,
+        Deserialize, Deserializer, Serialize, Serializer,
+    };
     use slab::Slab;
     use std::marker::PhantomData;
+    use std::{collections::HashMap, fmt};
 
     pub fn serialize<T, S>(slab: &Slab<T>, serializer: S) -> Result<S::Ok, S::Error>
-        where T: Serialize,
-              S: Serializer
+    where
+        T: Serialize,
+        S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(slab.capacity()))?;
         for (k, v) in slab.iter() {
@@ -176,10 +179,11 @@ mod serde_slab {
         map.end()
     }
 
-    pub fn deserialize <'de, T, D>(deserializer: D) -> Result<Slab<T>, D::Error>
-        where T: Deserialize<'de>,
-              T: Default,
-              D: Deserializer<'de>
+    pub fn deserialize<'de, T, D>(deserializer: D) -> Result<Slab<T>, D::Error>
+    where
+        T: Deserialize<'de>,
+        T: Default,
+        D: Deserializer<'de>,
     {
         struct SlabVisitor<T> {
             marker: PhantomData<fn() -> Slab<T>>,
@@ -214,7 +218,9 @@ mod serde_slab {
                 Ok(map)
             }
         }
-        deserializer.deserialize_map(SlabVisitor{marker: PhantomData})
+        deserializer.deserialize_map(SlabVisitor {
+            marker: PhantomData,
+        })
     }
 }
 
@@ -230,18 +236,13 @@ pub struct Entity {
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
-        let square1 = Rectangle::new(Point::default(), square_side_length, square_side_length);
-        let square2 = Rectangle::new(
-            Point::new(0., bottom_right.y - square_side_length),
-            square_side_length,
-            square_side_length,
-        );
         let square3 = Rectangle::new(
             bottom_right / 50.,
             square_side_length / 2.,
             square_side_length / 2.,
         );
         let mut game = Game {
+            square_side_length,
             bottom_right,
             positions: Slab::new(),
             velocities: Slab::new(),
@@ -252,34 +253,33 @@ impl Game {
             colors: Slab::new(),
         };
         game.insert_entity(Entity {
-            position: square1,
-            velocity: Point::default(),
-            acceleration: Point::default(),
-            animation: None,
-            moveable: true,
-            moved_this_action: false,
-            color: BLACK,
-        });
-        game.insert_entity(Entity {
-            position: square2,
-            velocity: Point::default(),
-            acceleration: Point::default(),
-            animation: None,
-            moveable: true, 
-            moved_this_action: false,
-            color: RED, 
-        });
-        game.insert_entity(Entity {
             position: square3,
             velocity: Point::default(),
             acceleration: Point::default(),
             animation: None,
-            moveable: false, 
+            moveable: false,
             moved_this_action: false,
-            color: GREEN, 
+            color: GREEN,
         });
         game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
         game
+    }
+
+    pub fn insert_new_player_square(&mut self) -> EntityId {
+        let square = Rectangle::new(
+            Point::default(),
+            self.square_side_length,
+            self.square_side_length,
+        );
+        self.insert_entity(Entity {
+            position: square,
+            velocity: Point::default(),
+            acceleration: Point::default(),
+            animation: None,
+            moveable: false,
+            moved_this_action: false,
+            color: BLACK,
+        })
     }
 
     pub fn insert_entity(&mut self, entity: Entity) -> EntityId {
@@ -288,7 +288,10 @@ impl Game {
         assert_eq!(entity_id, self.accelerations.insert(entity.acceleration));
         assert_eq!(entity_id, self.animations.insert(entity.animation));
         assert_eq!(entity_id, self.moveable.insert(entity.moveable));
-        assert_eq!(entity_id, self.moved_this_action.insert(entity.moved_this_action));
+        assert_eq!(
+            entity_id,
+            self.moved_this_action.insert(entity.moved_this_action)
+        );
         assert_eq!(entity_id, self.colors.insert(entity.color));
         entity_id
     }
@@ -351,30 +354,22 @@ impl Game {
         delta - overlap
     }
 
-    pub fn process_key_press(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
+    pub fn process_key_press(&mut self, id: EntityId, key: &Key) -> Result<(), InvalidKeyError> {
         Ok(match key {
-            &Key::W => self.velocities[SQUARE_1].y = -1. * MOVE_VELOCITY,
-            &Key::A => self.velocities[SQUARE_1].x = -1. * MOVE_VELOCITY,
-            &Key::S => self.velocities[SQUARE_1].y = 1. * MOVE_VELOCITY,
-            &Key::D => self.velocities[SQUARE_1].x = 1. * MOVE_VELOCITY,
-            &Key::Up => self.velocities[SQUARE_2].y = -1. * MOVE_VELOCITY,
-            &Key::Left => self.velocities[SQUARE_2].x = -1. * MOVE_VELOCITY,
-            &Key::Down => self.velocities[SQUARE_2].y = 1. * MOVE_VELOCITY,
-            &Key::Right => self.velocities[SQUARE_2].x = 1. * MOVE_VELOCITY,
+            &Key::W => self.velocities[id].y = -1. * MOVE_VELOCITY,
+            &Key::A => self.velocities[id].x = -1. * MOVE_VELOCITY,
+            &Key::S => self.velocities[id].y = 1. * MOVE_VELOCITY,
+            &Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
             _ => return Err(InvalidKeyError),
         })
     }
 
-    pub fn process_key_release(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
+    pub fn process_key_release(&mut self, id: EntityId, key: &Key) -> Result<(), InvalidKeyError> {
         Ok(match key {
-            &Key::W => self.velocities[SQUARE_1].y = 0.,
-            &Key::A => self.velocities[SQUARE_1].x = 0.,
-            &Key::S => self.velocities[SQUARE_1].y = 0.,
-            &Key::D => self.velocities[SQUARE_1].x = 0.,
-            &Key::Up => self.velocities[SQUARE_2].y = 0.,
-            &Key::Left => self.velocities[SQUARE_2].x = 0.,
-            &Key::Down => self.velocities[SQUARE_2].y = 0.,
-            &Key::Right => self.velocities[SQUARE_2].x = 0.,
+            &Key::W => self.velocities[id].y = 0.,
+            &Key::A => self.velocities[id].x = 0.,
+            &Key::S => self.velocities[id].y = 0.,
+            &Key::D => self.velocities[id].x = 0.,
             _ => return Err(InvalidKeyError),
         })
     }
@@ -403,10 +398,10 @@ impl Game {
         }
     }
 
-    pub fn draw(&mut self, c: Context, g: &mut G2d) {
-        let pov = self.positions[0].top_left;
-        let pov_width = self.positions[0].width;
-        let pov_height = self.positions[0].height;
+    pub fn draw(&mut self, pov_id: EntityId, c: Context, g: &mut G2d) {
+        let pov = self.positions[pov_id].top_left;
+        let pov_width = self.positions[pov_id].width;
+        let pov_height = self.positions[pov_id].height;
         let [x, y] = c.get_view_size();
         for (i, entity) in self.positions.iter() {
             let mut entity = entity.clone();
