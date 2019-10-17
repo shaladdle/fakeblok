@@ -1,5 +1,6 @@
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
+use slab::Slab;
 
 pub type GameInt = f32;
 pub type EntityId = usize;
@@ -142,13 +143,89 @@ impl std::ops::Div<GameInt> for Point {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Game {
     pub bottom_right: Point,
-    pub positions: Vec<Rectangle>,
-    pub velocities: Vec<Point>,
-    pub accelerations: Vec<Point>,
-    pub animations: Vec<Option<Animation>>,
-    pub moveable: Vec<bool>,
-    pub moved_this_action: Vec<bool>,
-    pub colors: Vec<types::Rectangle<GameInt>>,
+    #[serde(with = "serde_slab")]
+    pub positions: Slab<Rectangle>,
+    #[serde(with = "serde_slab")]
+    pub velocities: Slab<Point>,
+    #[serde(with = "serde_slab")]
+    pub accelerations: Slab<Point>,
+    #[serde(with = "serde_slab")]
+    pub animations: Slab<Option<Animation>>,
+    #[serde(with = "serde_slab")]
+    pub moveable: Slab<bool>,
+    #[serde(with = "serde_slab")]
+    pub moved_this_action: Slab<bool>,
+    #[serde(with = "serde_slab")]
+    pub colors: Slab<types::Rectangle<GameInt>>,
+}
+
+mod serde_slab {
+    use std::{collections::HashMap, fmt};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap, de::{MapAccess, Visitor}};
+    use slab::Slab;
+    use std::marker::PhantomData;
+
+    pub fn serialize<T, S>(slab: &Slab<T>, serializer: S) -> Result<S::Ok, S::Error>
+        where T: Serialize,
+              S: Serializer
+    {
+        let mut map = serializer.serialize_map(Some(slab.capacity()))?;
+        for (k, v) in slab.iter() {
+            map.serialize_entry(&k, v)?;
+        }
+        map.end()
+    }
+
+    pub fn deserialize <'de, T, D>(deserializer: D) -> Result<Slab<T>, D::Error>
+        where T: Deserialize<'de>,
+              T: Default,
+              D: Deserializer<'de>
+    {
+        struct SlabVisitor<T> {
+            marker: PhantomData<fn() -> Slab<T>>,
+        }
+        impl<'de, T> Visitor<'de> for SlabVisitor<T>
+        where
+            T: Default,
+            T: Deserialize<'de>,
+        {
+            type Value = Slab<T>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a slab")
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut map = Slab::with_capacity(access.size_hint().unwrap_or(0));
+                let mut hash_map = HashMap::<usize, _>::new();
+                while let Some((key, value)) = access.next_entry()? {
+                    hash_map.insert(key, value);
+                }
+
+                for _ in 0..hash_map.len() {
+                    let entry = map.vacant_entry();
+                    let key = entry.key();
+                    entry.insert(hash_map.remove(&key).unwrap());
+                }
+
+                Ok(map)
+            }
+        }
+        deserializer.deserialize_map(SlabVisitor{marker: PhantomData})
+    }
+}
+
+pub struct Entity {
+    pub position: Rectangle,
+    pub velocity: Point,
+    pub acceleration: Point,
+    pub animation: Option<Animation>,
+    pub moveable: bool,
+    pub moved_this_action: bool,
+    pub color: types::Rectangle<GameInt>,
 }
 
 impl Game {
@@ -166,20 +243,54 @@ impl Game {
         );
         let mut game = Game {
             bottom_right,
-            positions: vec![square1, square2, square3],
-            velocities: vec![Point::default(), Point::default(), Point::default()],
-            accelerations: vec![Point::default(), Point::default(), Point::default()],
-            animations: vec![None; 3],
-            moveable: vec![true, true, false],
-            moved_this_action: vec![false; 3],
-            colors: vec![BLACK, RED, GREEN],
+            positions: Slab::new(),
+            velocities: Slab::new(),
+            accelerations: Slab::new(),
+            animations: Slab::new(),
+            moveable: Slab::new(),
+            moved_this_action: Slab::new(),
+            colors: Slab::new(),
         };
+        game.insert_entity(Entity {
+            position: square1,
+            velocity: Point::default(),
+            acceleration: Point::default(),
+            animation: None,
+            moveable: true,
+            moved_this_action: false,
+            color: BLACK,
+        });
+        game.insert_entity(Entity {
+            position: square2,
+            velocity: Point::default(),
+            acceleration: Point::default(),
+            animation: None,
+            moveable: true, 
+            moved_this_action: false,
+            color: RED, 
+        });
+        game.insert_entity(Entity {
+            position: square3,
+            velocity: Point::default(),
+            acceleration: Point::default(),
+            animation: None,
+            moveable: false, 
+            moved_this_action: false,
+            color: GREEN, 
+        });
         game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
         game
     }
 
-    pub fn entities(&self) -> &[Rectangle] {
-        &self.positions
+    pub fn insert_entity(&mut self, entity: Entity) -> EntityId {
+        let entity_id = self.positions.insert(entity.position);
+        assert_eq!(entity_id, self.velocities.insert(entity.velocity));
+        assert_eq!(entity_id, self.accelerations.insert(entity.acceleration));
+        assert_eq!(entity_id, self.animations.insert(entity.animation));
+        assert_eq!(entity_id, self.moveable.insert(entity.moveable));
+        assert_eq!(entity_id, self.moved_this_action.insert(entity.moved_this_action));
+        assert_eq!(entity_id, self.colors.insert(entity.color));
+        entity_id
     }
 
     fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Point {
@@ -198,7 +309,7 @@ impl Game {
     }
 
     pub fn start_move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
-        for moved in &mut self.moved_this_action {
+        for (_, moved) in &mut self.moved_this_action {
             *moved = false;
         }
         self.move_entity(entity, delta)
@@ -297,7 +408,7 @@ impl Game {
         let pov_width = self.positions[0].width;
         let pov_height = self.positions[0].height;
         let [x, y] = c.get_view_size();
-        for (i, entity) in self.entities().iter().enumerate() {
+        for (i, entity) in self.positions.iter() {
             let mut entity = entity.clone();
             entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt
                 - pov.x
@@ -327,7 +438,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
@@ -434,7 +545,7 @@ fn my_rectangle_segments_no_overflow() {
     };
     let mut expected_recs = vec![Rectangle::new(Point::new(5., 5.), 5., 5.)];
     rect.segments(Point { x: 10., y: 10. }, |r| {
-        for (i, rec) in expected_recs.iter().enumerate() {
+        for (i, rec) in expected_recs.iter() {
             if rec == &r {
                 expected_recs.remove(i);
                 return;
@@ -456,7 +567,7 @@ fn my_rectangle_segments_overflow() {
         Rectangle::new(Point::new(0., 5.), 3., 5.),
     ];
     rect.segments(Point { x: 7., y: 10. }, |r| {
-        for (i, rec) in expected_recs.iter().enumerate() {
+        for (i, rec) in expected_recs.iter() {
             if rec == &r {
                 expected_recs.remove(i);
                 return;

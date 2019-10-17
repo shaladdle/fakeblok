@@ -3,15 +3,13 @@ use crate::rpc_service;
 use futures::future::{self, Ready};
 use futures::prelude::*;
 use log::debug;
-use piston_window::{Button, ButtonArgs, ButtonState, Input, Key};
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use piston_window::{Button, ButtonArgs, ButtonState, Input};
+use std::collections::{hash_map::Entry, HashMap};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::{io, net};
 use tarpc::context;
 use tokio::sync::watch;
-
-fn process_input(game: &mut game::Game, input: &Input) {}
 
 pub type PlayerId = usize;
 
