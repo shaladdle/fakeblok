@@ -45,9 +45,12 @@ async fn run_server(
                 while let Some(handler) = response_stream.next().await {
                     // No need to do response handling concurrently, because thee futures are
                     // very short-lived.
-                    handler?.await
+                    info!("Responding...");
+                    handler?.await;
+                    info!("done.");
                 }
-                info!("Done");
+                info!("Player {} has disconnected.", entity_id);
+                game.lock().unwrap().remove_entity(entity_id);
                 Ok::<_, io::Error>(())
             }
         })

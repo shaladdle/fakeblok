@@ -282,6 +282,16 @@ impl Game {
         })
     }
 
+    pub fn remove_entity(&mut self, entity: EntityId) {
+        self.positions.remove(entity);
+        self.velocities.remove(entity);
+        self.accelerations.remove(entity);
+        self.animations.remove(entity);
+        self.moveable.remove(entity);
+        self.moved_this_action.remove(entity);
+        self.colors.remove(entity);
+    }
+
     pub fn insert_entity(&mut self, entity: Entity) -> EntityId {
         let entity_id = self.positions.insert(entity.position);
         assert_eq!(entity_id, self.velocities.insert(entity.velocity));
