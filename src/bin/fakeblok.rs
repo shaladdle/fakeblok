@@ -3,15 +3,14 @@ use fakeblok::game::Game;
 use fakeblok::game_client;
 use log::info;
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
-    Loop, OpenGL, PistonWindow, WindowSettings,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Loop,
+    OpenGL, PistonWindow, WindowSettings,
 };
 use pretty_env_logger;
-use std::collections::HashSet;
 use std::io;
 use tokio::runtime::Runtime;
 
-fn process_input(keys: &mut HashSet<Key>, input: &Input) {
+fn process_input(game: &mut Game, input: &Input, client: &mut game_client::GameClient) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -19,24 +18,25 @@ fn process_input(keys: &mut HashSet<Key>, input: &Input) {
             ..
         }) => match state {
             ButtonState::Press => {
-                keys.insert(*key);
+                if let Ok(_) = game.process_key_press(key) {
+                    send_keys_to_server(client, input.clone());
+                }
             }
             ButtonState::Release => {
-                keys.remove(key);
+                if let Ok(_) = game.process_key_release(key) {
+                    send_keys_to_server(client, input.clone());
+                }
             }
         },
         _ => {}
     }
 }
 
-fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
+fn process_loop(game: &mut Game, lp: &Loop) {
     match lp {
         Loop::Idle(_) => {}
         Loop::Update(_) => {
             game.tick();
-            for key in keys {
-                game.process_key(key);
-            }
         }
         Loop::AfterRender(_) => {}
         lp => panic!("Didn't expect {:?}", lp),
@@ -44,10 +44,10 @@ fn process_loop(game: &mut Game, lp: &Loop, keys: &HashSet<Key>) {
 }
 
 fn run_ui(server_addr: &str) -> io::Result<()> {
-    let opengl = OpenGL::V3_2;
-    let mut window: PistonWindow = WindowSettings::new("shapes", [512; 2])
+    let mut resolution = [512.; 2];
+    let mut window: PistonWindow = WindowSettings::new("shapes", resolution)
         .exit_on_esc(true)
-        .graphics_api(opengl)
+        .graphics_api(OpenGL::V3_2)
         .build()
         .unwrap();
     window.set_lazy(true);
@@ -57,14 +57,21 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
     let mut events = Events::new(EventSettings::new().ups(1000));
     info!("start!");
     let game = client.get_game();
-    let mut keys = HashSet::new();
     while let Some(event) = events.next(&mut window) {
         match event {
             Event::Input(ref input, _) => {
-                process_input(&mut keys, input);
-                send_keys_to_server(&mut client, input.clone());
+                process_input(&mut game.lock().unwrap(), input, &mut client);
             }
-            Event::Loop(Loop::Render(_)) => {
+            Event::Loop(Loop::Render(args)) => {
+                if resolution != args.window_size {
+                    info!("Resizing {:?} => {:?}", resolution, args.window_size);
+                    resolution = args.window_size;
+                    window = WindowSettings::new("shapes", resolution)
+                        .exit_on_esc(true)
+                        .graphics_api(OpenGL::V3_2)
+                        .build()
+                        .unwrap();
+                }
                 window.draw_2d(&event, |c, g, _| {
                     clear([1.0; 4], g);
                     game.lock().unwrap().clone().draw(c, g);
@@ -72,7 +79,7 @@ fn run_ui(server_addr: &str) -> io::Result<()> {
             }
             Event::Loop(ref lp) => {
                 let mut game = game.lock().unwrap();
-                process_loop(&mut game, lp, &keys);
+                process_loop(&mut game, lp);
             }
             _ => {}
         }

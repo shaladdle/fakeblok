@@ -1,18 +1,17 @@
-use piston_window::{context::Context, rectangle, types, G2d, Key};
+use piston_window::{context::Context, rectangle, types, G2d, Key, Transformed};
 use serde::{Deserialize, Serialize};
 
-pub type GameInt = u16;
+pub type GameInt = f32;
 pub type EntityId = usize;
+pub struct InvalidKeyError;
 
-const MOVE_INCREMENT: GameInt = 1;
 const SQUARE_1: EntityId = 0;
 const SQUARE_2: EntityId = 1;
-const IMMOVEABLE_OBJECT: EntityId = 2;
 const BLACK: types::Rectangle<f32> = [0.0, 0.0, 0.0, 1.0];
 const RED: types::Rectangle<f32> = [1.0, 0.0, 0.0, 1.0];
 const GREEN: types::Rectangle<f32> = [0.0, 1.0, 0.0, 1.0];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: GameInt,
     pub y: GameInt,
@@ -31,12 +30,46 @@ impl Point {
         self.x > other.x
     }
 
-    pub fn at_x(&self, x: GameInt) -> Self {
+    pub fn is_origin(self) -> bool {
+        self.x == 0. && self.y == 0.
+    }
+
+    pub fn at_x(self, x: GameInt) -> Self {
         Point { x, y: self.y }
     }
 
-    pub fn at_y(&self, y: GameInt) -> Self {
+    pub fn at_y(self, y: GameInt) -> Self {
         Point { x: self.x, y }
+    }
+
+    /** Element-wise maximum. */
+    pub fn max(self, other: Point) -> Self {
+        Point {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
+    }
+
+    /** Element-wise minimum. */
+    pub fn min(self, other: Point) -> Self {
+        Point {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+        }
+    }
+
+    pub fn copysign(self, sign: Point) -> Self {
+        Point {
+            x: self.x.copysign(sign.x),
+            y: self.y.copysign(sign.y),
+        }
+    }
+
+    pub fn abs(self) -> Self {
+        Point {
+            x: self.x.abs(),
+            y: self.y.abs(),
+        }
     }
 }
 
@@ -51,6 +84,13 @@ impl std::ops::Sub for Point {
     }
 }
 
+impl std::ops::SubAssign for Point {
+    fn sub_assign(&mut self, other: Self) {
+        self.x -= other.x;
+        self.y -= other.y;
+    }
+}
+
 impl std::ops::Add for Point {
     type Output = Self;
 
@@ -59,6 +99,13 @@ impl std::ops::Add for Point {
             x: self.x + other.x,
             y: self.y + other.y,
         }
+    }
+}
+
+impl std::ops::AddAssign for Point {
+    fn add_assign(&mut self, other: Self) {
+        self.x += other.x;
+        self.y += other.y;
     }
 }
 
@@ -88,22 +135,24 @@ impl std::ops::Div<GameInt> for Point {
 pub struct Game {
     pub bottom_right: Point,
     pub positions: Vec<Rectangle>,
+    pub velocities: Vec<Point>,
     pub moveable: Vec<bool>,
     pub colors: Vec<types::Rectangle<f32>>,
 }
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
-        let square1 = Rectangle::new(Point::new(0, 0), square_side_length, square_side_length);
+        let square1 = Rectangle::new(Point::default(), square_side_length, square_side_length);
         let square2 = Rectangle::new(
-            Point::new(0, bottom_right.y - square_side_length),
+            Point::new(0., bottom_right.y - square_side_length),
             square_side_length,
             square_side_length,
         );
-        let square3 = Rectangle::new(bottom_right / 2, square_side_length, square_side_length);
+        let square3 = Rectangle::new(bottom_right / 2., square_side_length, square_side_length);
         Game {
             bottom_right,
             positions: vec![square1, square2, square3],
+            velocities: vec![Point::default(), Point::default(), Point::new(0., -1.)],
             moveable: vec![true, true, false],
             colors: vec![BLACK, RED, GREEN],
         }
@@ -113,145 +162,100 @@ impl Game {
         &self.positions
     }
 
-    pub fn move_entity(
-        &mut self,
-        entity: EntityId,
-        get_overlap: impl Fn(&Rectangle) -> GameInt + Copy,
-        // (&mut self, diff: GameInt, width: GameInt)
-        forward: impl Fn(&mut Rectangle, GameInt, GameInt) + Copy,
-        // (&mut self, diff: GameInt, width: GameInt)
-        backward: impl Fn(&mut Rectangle, GameInt, GameInt) + Copy,
-    ) -> GameInt {
+    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Point {
+        entity_segments
+            .iter()
+            .map(|entity_segment| {
+                let mut overlap = Point::default();
+                self.positions[other].segments(self.bottom_right, |r| {
+                    if let Some(r) = entity_segment.overlap(&r) {
+                        overlap = overlap.max(Point::new(r.width, r.height));
+                    }
+                });
+                overlap
+            })
+            .fold(Point::default(), |first, second| first.max(second))
+    }
+
+    pub fn move_entity(&mut self, entity: EntityId, delta: Point) -> Point {
         let game_width = self.width();
+        let game_height = self.height();
         let bottom_right = self.bottom_right;
-        forward(&mut self.positions[entity], MOVE_INCREMENT, game_width);
+        self.positions[entity].move_(delta, game_width, game_height);
         let mut entity_segments = vec![];
         self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
-        let mut overlap = 0;
+        let mut overlap = Point::default();
         for id in 0..self.positions.len() {
             if id == entity {
                 continue;
             }
-            let entity_overlap = entity_segments
-                .iter()
-                .map(|entity_segment| {
-                    let mut overlap = 0;
-                    self.positions[id].segments(bottom_right, |r| {
-                        match entity_segment.overlap(&r) {
-                            Some(r) => overlap = overlap.max(get_overlap(&r)),
-                            None => {}
-                        }
-                    });
-                    overlap
-                })
-                .max();
-            if let Some(entity_overlap) = entity_overlap.filter(|overlap| *overlap > 0) {
+            let entity_overlap = self.entity_overlap(&entity_segments, id);
+
+            if entity_overlap.x > 0. || entity_overlap.y > 0. {
                 if self.moveable[id] {
-                    let pushed = self.move_entity(id, get_overlap, forward, backward);
-                    overlap = overlap.max(entity_overlap - pushed);
+                    let to_move = entity_overlap.min(delta.abs()).copysign(delta);
+                    self.move_entity(id, to_move);
+                    overlap = overlap.max(self.entity_overlap(&entity_segments, id));
                 } else {
                     overlap = overlap.max(entity_overlap)
                 }
             }
         }
-        if overlap > 0 {
-            backward(&mut self.positions[entity], overlap, game_width);
+        if !overlap.is_origin() {
+            let to_move = overlap.min(delta.abs()).copysign(delta) * -1.;
+            self.move_entity(entity, to_move);
         }
-        MOVE_INCREMENT - overlap
+        delta - overlap
     }
 
-    pub fn move_entity_up(&mut self, entity: EntityId) {
-        self.move_entity(
-            entity,
-            |r| r.height,
-            Rectangle::move_up,
-            Rectangle::move_down,
-        );
+    pub fn process_key_press(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
+        Ok(match key {
+            &Key::W => self.velocities[SQUARE_1].y = -1.,
+            &Key::A => self.velocities[SQUARE_1].x = -1.,
+            &Key::S => self.velocities[SQUARE_1].y = 1.,
+            &Key::D => self.velocities[SQUARE_1].x = 1.,
+            &Key::Up => self.velocities[SQUARE_2].y = -1.,
+            &Key::Left => self.velocities[SQUARE_2].x = -1.,
+            &Key::Down => self.velocities[SQUARE_2].y = 1.,
+            &Key::Right => self.velocities[SQUARE_2].x = 1.,
+            _ => return Err(InvalidKeyError),
+        })
     }
 
-    pub fn move_entity_left(&mut self, entity: EntityId) {
-        self.move_entity(
-            entity,
-            |r| r.width,
-            Rectangle::move_left,
-            Rectangle::move_right,
-        );
-    }
-
-    pub fn move_entity_right(&mut self, entity: EntityId) {
-        self.move_entity(
-            entity,
-            |r| r.width,
-            Rectangle::move_right,
-            Rectangle::move_left,
-        );
-    }
-
-    pub fn move_entity_down(&mut self, entity: EntityId) {
-        self.move_entity(
-            entity,
-            |r| r.height,
-            Rectangle::move_down,
-            Rectangle::move_up,
-        );
-    }
-
-    /// Modifies the game state according to the given keypress
-    ///
-    /// Returns: true if the game state was modified, false otherwise.
-    pub fn process_key(&mut self, key: &Key) -> bool {
-        match key {
-            &Key::W => {
-                self.move_entity_up(SQUARE_1);
-                true
-            }
-            &Key::A => {
-                self.move_entity_left(SQUARE_1);
-                true
-            }
-            &Key::S => {
-                self.move_entity_down(SQUARE_1);
-                true
-            }
-            &Key::D => {
-                self.move_entity_right(SQUARE_1);
-                true
-            }
-            &Key::Up => {
-                self.move_entity_up(SQUARE_2);
-                true
-            }
-            &Key::Left => {
-                self.move_entity_left(SQUARE_2);
-                true
-            }
-            &Key::Down => {
-                self.move_entity_down(SQUARE_2);
-                true
-            }
-            &Key::Right => {
-                self.move_entity_right(SQUARE_2);
-                true
-            }
-            _ => false,
-        }
+    pub fn process_key_release(&mut self, key: &Key) -> Result<(), InvalidKeyError> {
+        Ok(match key {
+            &Key::W => self.velocities[SQUARE_1].y = 0.,
+            &Key::A => self.velocities[SQUARE_1].x = 0.,
+            &Key::S => self.velocities[SQUARE_1].y = 0.,
+            &Key::D => self.velocities[SQUARE_1].x = 0.,
+            &Key::Up => self.velocities[SQUARE_2].y = 0.,
+            &Key::Left => self.velocities[SQUARE_2].x = 0.,
+            &Key::Down => self.velocities[SQUARE_2].y = 0.,
+            &Key::Right => self.velocities[SQUARE_2].x = 0.,
+            _ => return Err(InvalidKeyError),
+        })
     }
 
     pub fn tick(&mut self) {
-        self.move_entity_up(IMMOVEABLE_OBJECT);
+        for entity in 0..self.velocities.len() {
+            if !self.velocities[entity].is_origin() {
+                self.move_entity(entity, self.velocities[entity]);
+            }
+        }
     }
 
     pub fn draw(&mut self, c: Context, g: &mut G2d) {
-        let [x, y] = c.viewport.unwrap().window_size;
+        let [x, y] = c.get_view_size();
+        let transform = c.transform.scale(x, y);
         for (i, entity) in self.entities().iter().enumerate() {
             entity.segments(self.bottom_right, |rect| {
                 rectangle(
                     self.colors[i],
                     rect.scale(
-                        x / self.bottom_right.x as f64,
-                        y / self.bottom_right.y as f64,
+                        1. / self.bottom_right.x as f64,
+                        1. / self.bottom_right.y as f64,
                     ),
-                    c.transform,
+                    transform,
                     g,
                 );
             });
@@ -267,7 +271,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
@@ -283,20 +287,9 @@ impl Rectangle {
         }
     }
 
-    pub fn move_left(&mut self, diff: GameInt, width: GameInt) {
-        self.top_left.x = (width + self.top_left.x - (diff % width)) % width;
-    }
-
-    pub fn move_right(&mut self, diff: GameInt, width: GameInt) {
-        self.top_left.x = (self.top_left.x + diff) % width;
-    }
-
-    pub fn move_up(&mut self, diff: GameInt, height: GameInt) {
-        self.top_left.y = (height + self.top_left.y - (diff % height)) % height;
-    }
-
-    pub fn move_down(&mut self, diff: GameInt, height: GameInt) {
-        self.top_left.y = (self.top_left.y + diff) % height;
+    pub fn move_(&mut self, diff: Point, width: GameInt, height: GameInt) {
+        self.top_left.x = (width + self.top_left.x + (diff.x % width)) % width;
+        self.top_left.y = (height + self.top_left.y + (diff.y % height)) % height;
     }
 
     pub fn overlap(&self, other: &Rectangle) -> Option<Rectangle> {
@@ -330,7 +323,7 @@ impl Rectangle {
             Rectangle {
                 top_left: Point {
                     x: self.top_left.x,
-                    y: 0,
+                    y: 0.,
                 },
                 width: self.width,
                 height: bottom_overflow,
@@ -341,7 +334,7 @@ impl Rectangle {
             let right_overflow = my_bottom_right.x - bottom_right.x;
             Rectangle {
                 top_left: Point {
-                    x: 0,
+                    x: 0.,
                     y: self.top_left.y,
                 },
                 width: right_overflow,
@@ -377,12 +370,12 @@ impl Rectangle {
 #[test]
 fn my_rectangle_segments_no_overflow() {
     let rect = Rectangle {
-        top_left: Point { x: 5, y: 5 },
-        width: 5,
-        height: 5,
+        top_left: Point { x: 5., y: 5. },
+        width: 5.,
+        height: 5.,
     };
-    let mut expected_recs = vec![Rectangle::new(Point::new(5, 5), 5, 5)];
-    rect.segments(Point { x: 10, y: 10 }, |r| {
+    let mut expected_recs = vec![Rectangle::new(Point::new(5., 5.), 5., 5.)];
+    rect.segments(Point { x: 10., y: 10. }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
@@ -396,15 +389,15 @@ fn my_rectangle_segments_no_overflow() {
 #[test]
 fn my_rectangle_segments_overflow() {
     let rect = Rectangle {
-        top_left: Point { x: 5, y: 5 },
-        width: 5,
-        height: 5,
+        top_left: Point { x: 5., y: 5. },
+        width: 5.,
+        height: 5.,
     };
     let mut expected_recs = vec![
-        Rectangle::new(Point::new(5, 5), 2, 5),
-        Rectangle::new(Point::new(0, 5), 3, 5),
+        Rectangle::new(Point::new(5., 5.), 2., 5.),
+        Rectangle::new(Point::new(0., 5.), 3., 5.),
     ];
-    rect.segments(Point { x: 7, y: 10 }, |r| {
+    rect.segments(Point { x: 7., y: 10. }, |r| {
         for (i, rec) in expected_recs.iter().enumerate() {
             if rec == &r {
                 expected_recs.remove(i);
@@ -413,4 +406,17 @@ fn my_rectangle_segments_overflow() {
         }
         panic!("Expected one of {:?}; got {:?}", expected_recs, r);
     });
+}
+
+#[test]
+fn rectangle_move() {
+    let mut rect = Rectangle {
+        top_left: Point { x: 5., y: 5. },
+        width: 5.,
+        height: 5.,
+    };
+    rect.move_(Point::new(5., 5.), 10., 10.);
+    assert_eq!(rect, Rectangle::new(Point::default(), 5., 5.));
+    rect.move_(Point::new(-5., -5.), 10., 10.);
+    assert_eq!(rect, Rectangle::new(Point::new(5., 5.), 5., 5.));
 }

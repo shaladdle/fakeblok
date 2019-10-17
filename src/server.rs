@@ -11,39 +11,23 @@ use std::{io, net};
 use tarpc::context;
 use tokio::sync::watch;
 
-fn process_input(keys: &mut HashSet<Key>, input: &Input) {
-    match input {
-        Input::Button(ButtonArgs {
-            button: Button::Keyboard(key),
-            state,
-            ..
-        }) => match state {
-            ButtonState::Press => {
-                keys.insert(*key);
-            }
-            ButtonState::Release => {
-                keys.remove(key);
-            }
-        },
-        _ => {}
-    }
-}
+fn process_input(game: &mut game::Game, input: &Input) {}
 
 pub type PlayerId = usize;
 
 pub struct Server {
-    keys: Arc<Mutex<HashSet<Key>>>,
     players: Mutex<HashMap<net::SocketAddr, PlayerId>>,
     player_ids: Mutex<slab::Slab<()>>,
+    game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
 }
 
 impl Server {
-    pub fn new(game_rx: watch::Receiver<game::Game>, keys: Arc<Mutex<HashSet<Key>>>) -> Self {
+    pub fn new(game: Arc<Mutex<game::Game>>, game_rx: watch::Receiver<game::Game>) -> Self {
         let players = Mutex::new(HashMap::new());
         let player_ids = Mutex::new(slab::Slab::with_capacity(100));
         Server {
-            keys,
+            game,
             players,
             player_ids,
             game_rx,
@@ -60,8 +44,8 @@ impl Server {
             ));
         };
         Ok(ConnectionHandler {
-            keys: self.keys.clone(),
             player_id: player_id,
+            game: self.game.clone(),
             game_rx: self.game_rx.clone(),
         })
     }
@@ -82,8 +66,8 @@ impl Server {
 
 #[derive(Clone)]
 pub struct ConnectionHandler {
-    keys: Arc<Mutex<HashSet<Key>>>,
     player_id: PlayerId,
+    game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
 }
 
@@ -92,8 +76,22 @@ impl rpc_service::Game for ConnectionHandler {
 
     fn push_input(self, _: context::Context, input: Input) -> Self::PushInputFut {
         debug!("push_input({:?})", input);
-        let mut keys = self.keys.lock().unwrap();
-        process_input(&mut keys, &input);
+        let mut game = self.game.lock().unwrap();
+        match input {
+            Input::Button(ButtonArgs {
+                button: Button::Keyboard(key),
+                state,
+                ..
+            }) => match state {
+                ButtonState::Press => {
+                    let _ = game.process_key_press(&key);
+                }
+                ButtonState::Release => {
+                    let _ = game.process_key_release(&key);
+                }
+            },
+            _ => {}
+        }
         future::ready(())
     }
 
