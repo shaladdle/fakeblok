@@ -1,7 +1,7 @@
 use piston_window::{context::Context, rectangle, types, G2d, Key};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use slab::Slab;
-use rand::Rng;
 
 pub type GameInt = f32;
 pub type EntityId = usize;
@@ -11,6 +11,18 @@ const PENDULUM_FORCE: GameInt = -4.;
 const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_3: EntityId = 0;
 const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
+
+fn random_color() -> types::Rectangle<GameInt> {
+    let mut rng = rand::thread_rng();
+    [0.0, rng.gen(), rng.gen(), rng.gen()]
+}
+
+fn random_point(bottom_right: Point) -> Point {
+    let mut rng = rand::thread_rng();
+    let x: GameInt = rng.gen_range(0., bottom_right.x as f32);
+    let y: GameInt = rng.gen_range(0., bottom_right.y as f32);
+    Point { x, y }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
@@ -261,18 +273,35 @@ impl Game {
             moved_this_action: false,
             color: GREEN,
         });
+        let mut rng = rand::thread_rng();
+        for _ in 0..100 {
+            let color = random_color();
+            let square = Rectangle::new(
+                random_point(bottom_right),
+                square_side_length / 2.,
+                square_side_length / 2.,
+                );
+            game.insert_entity(Entity {
+                position: square,
+                velocity: Point::default(),
+                acceleration: Point::default(),
+                animation: None,
+                moveable: rng.gen(),
+                moved_this_action: false,
+                color,
+            });
+        }
         game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
         game
     }
 
     pub fn insert_new_player_square(&mut self) -> EntityId {
-        let mut rng = rand::thread_rng();
         let square = Rectangle::new(
             Point::default(),
             self.square_side_length,
             self.square_side_length,
         );
-        let color: types::Rectangle<GameInt> = [0.0, rng.gen(), rng.gen(), rng.gen()];
+        let color = random_color();
         self.insert_entity(Entity {
             position: square,
             velocity: Point::default(),
