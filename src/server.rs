@@ -10,8 +10,6 @@ use std::sync::{Arc, Mutex};
 use tarpc::context;
 use tokio::sync::watch;
 
-// const RED: types::Rectangle<GameInt> = [1.0, 0.0, 0.0, 1.0];
-
 pub struct Server {
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,

@@ -1,6 +1,7 @@
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use serde::{Deserialize, Serialize};
 use slab::Slab;
+use rand::Rng;
 
 pub type GameInt = f32;
 pub type EntityId = usize;
@@ -10,7 +11,6 @@ const PENDULUM_FORCE: GameInt = -4.;
 const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_3: EntityId = 0;
 const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
-const BLACK: types::Rectangle<GameInt> = [0.0, 0.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
@@ -266,11 +266,13 @@ impl Game {
     }
 
     pub fn insert_new_player_square(&mut self) -> EntityId {
+        let mut rng = rand::thread_rng();
         let square = Rectangle::new(
             Point::default(),
             self.square_side_length,
             self.square_side_length,
         );
+        let color: types::Rectangle<GameInt> = [0.0, rng.gen(), rng.gen(), rng.gen()];
         self.insert_entity(Entity {
             position: square,
             velocity: Point::default(),
@@ -278,7 +280,7 @@ impl Game {
             animation: None,
             moveable: true,
             moved_this_action: false,
-            color: BLACK,
+            color,
         })
     }
 
