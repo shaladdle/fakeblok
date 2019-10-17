@@ -7,7 +7,7 @@ pub type GameInt = f32;
 pub type EntityId = usize;
 pub struct InvalidKeyError;
 
-const PENDULUM_FORCE: GameInt = -4.;
+const PENDULUM_FORCE: Point = Point::new(54.4, 54.4);
 const MOVE_VELOCITY: GameInt = 50.;
 const SQUARE_3: EntityId = 0;
 const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
@@ -26,7 +26,7 @@ fn random_point(bottom_right: Point) -> Point {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
-    Pendulum { distance: Point },
+    Pendulum { distance: Point, max_distance: Point },
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn new(x: GameInt, y: GameInt) -> Point {
+    pub const fn new(x: GameInt, y: GameInt) -> Point {
         Point { x, y }
     }
 
@@ -52,11 +52,11 @@ impl Point {
         self.x == 0. && self.y == 0.
     }
 
-    pub fn at_x(self, x: GameInt) -> Self {
+    pub const fn at_x(self, x: GameInt) -> Self {
         Point { x, y: self.y }
     }
 
-    pub fn at_y(self, y: GameInt) -> Self {
+    pub const fn at_y(self, y: GameInt) -> Self {
         Point { x: self.x, y }
     }
 
@@ -87,6 +87,20 @@ impl Point {
         Point {
             x: self.x.abs(),
             y: self.y.abs(),
+        }
+    }
+
+    fn sqrt(self) -> Self {
+        Self {
+            x: self.x.sqrt(),
+            y: self.y.sqrt(),
+        }
+    }
+
+    fn sin(self) -> Self {
+        Self {
+            x: self.x.sin(),
+            y: self.y.sin(),
         }
     }
 }
@@ -138,6 +152,17 @@ impl std::ops::Mul<GameInt> for Point {
     }
 }
 
+impl std::ops::Mul for Point {
+    type Output = Self;
+
+    fn mul(self, multiplier: Point) -> Self {
+        Self {
+            x: self.x * multiplier.x,
+            y: self.y * multiplier.y,
+        }
+    }
+}
+
 impl std::ops::Div<GameInt> for Point {
     type Output = Self;
 
@@ -145,6 +170,17 @@ impl std::ops::Div<GameInt> for Point {
         Self {
             x: self.x / divisor,
             y: self.y / divisor,
+        }
+    }
+}
+
+impl std::ops::Div for Point {
+    type Output = Self;
+
+    fn div(self, divisor: Point) -> Self {
+        Self {
+            x: self.x / divisor.x,
+            y: self.y / divisor.y,
         }
     }
 }
@@ -158,8 +194,6 @@ pub struct Game {
     #[serde(with = "serde_slab")]
     pub velocities: Slab<Point>,
     #[serde(with = "serde_slab")]
-    pub accelerations: Slab<Point>,
-    #[serde(with = "serde_slab")]
     pub animations: Slab<Option<Animation>>,
     #[serde(with = "serde_slab")]
     pub moveable: Slab<bool>,
@@ -167,6 +201,7 @@ pub struct Game {
     pub moved_this_action: Slab<bool>,
     #[serde(with = "serde_slab")]
     pub colors: Slab<types::Rectangle<GameInt>>,
+    time: f32,
 }
 
 mod serde_slab {
@@ -239,7 +274,6 @@ mod serde_slab {
 pub struct Entity {
     pub position: Rectangle,
     pub velocity: Point,
-    pub acceleration: Point,
     pub animation: Option<Animation>,
     pub moveable: bool,
     pub moved_this_action: bool,
@@ -258,16 +292,15 @@ impl Game {
             bottom_right,
             positions: Slab::new(),
             velocities: Slab::new(),
-            accelerations: Slab::new(),
             animations: Slab::new(),
             moveable: Slab::new(),
             moved_this_action: Slab::new(),
             colors: Slab::new(),
+            time: 0.,
         };
         game.insert_entity(Entity {
             position: square3,
             velocity: Point::default(),
-            acceleration: Point::default(),
             animation: None,
             moveable: false,
             moved_this_action: false,
@@ -284,14 +317,13 @@ impl Game {
             game.insert_entity(Entity {
                 position: square,
                 velocity: Point::default(),
-                acceleration: Point::default(),
                 animation: None,
                 moveable: rng.gen(),
                 moved_this_action: false,
                 color,
             });
         }
-        game.init_pendulum(SQUARE_3, bottom_right / 50. + Point::new(-100., 200.));
+        game.init_pendulum(SQUARE_3, game.positions[SQUARE_3].top_left + Point::new(-100., 200.));
         game
     }
 
@@ -305,7 +337,6 @@ impl Game {
         self.insert_entity(Entity {
             position: square,
             velocity: Point::default(),
-            acceleration: Point::default(),
             animation: None,
             moveable: true,
             moved_this_action: false,
@@ -316,7 +347,6 @@ impl Game {
     pub fn remove_entity(&mut self, entity: EntityId) {
         self.positions.remove(entity);
         self.velocities.remove(entity);
-        self.accelerations.remove(entity);
         self.animations.remove(entity);
         self.moveable.remove(entity);
         self.moved_this_action.remove(entity);
@@ -326,7 +356,6 @@ impl Game {
     pub fn insert_entity(&mut self, entity: Entity) -> EntityId {
         let entity_id = self.positions.insert(entity.position);
         assert_eq!(entity_id, self.velocities.insert(entity.velocity));
-        assert_eq!(entity_id, self.accelerations.insert(entity.acceleration));
         assert_eq!(entity_id, self.animations.insert(entity.animation));
         assert_eq!(entity_id, self.moveable.insert(entity.moveable));
         assert_eq!(
@@ -417,22 +446,23 @@ impl Game {
 
     fn init_pendulum(&mut self, entity: EntityId, midpoint: Point) {
         let distance = self.positions[entity].top_left - midpoint;
-        self.animations[entity] = Some(Animation::Pendulum { distance });
-        self.accelerations[entity] = distance * PENDULUM_FORCE;
+        self.animations[entity] = Some(Animation::Pendulum { distance, max_distance: distance.abs() });
     }
 
     pub fn tick(&mut self, dt: f32) {
+        self.time += dt;
         for entity in 0..self.velocities.len() {
             let mut delta = Point::default();
             if !self.velocities[entity].is_origin() {
                 delta += self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
                 delta += self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
             }
-            self.velocities[entity] += self.accelerations[entity] * dt;
             match self.animations[entity] {
-                Some(Animation::Pendulum { ref mut distance }) => {
+                Some(Animation::Pendulum { ref mut distance, max_distance }) => {
                     *distance += delta;
-                    self.accelerations[entity] = *distance * PENDULUM_FORCE;
+                    // I don't know what this is doing but it's kind of interesting.
+                    self.velocities[entity] = (max_distance * PENDULUM_FORCE).sqrt()
+                        * ((PENDULUM_FORCE / max_distance).sqrt() * self.time).sin();
                 }
                 None => {}
             }
