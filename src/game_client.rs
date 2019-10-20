@@ -1,10 +1,13 @@
-use crate::{game::{self, EntityId, Game}, rpc_service};
+use crate::{
+    game::{self, EntityId, Game},
+    rpc_service,
+};
 use futures::future::TryFutureExt;
 use futures::Future;
 use futures::{channel::mpsc, stream::StreamExt};
 use log::{debug, error, info};
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Key, Input,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use std::io;
@@ -92,12 +95,7 @@ impl GameClient {
 
 const VALID_KEYS: [Key; 4] = [Key::W, Key::A, Key::S, Key::D];
 
-fn process_input(
-    game: &mut Game,
-    id: EntityId,
-    input: &Input,
-    client: &mut GameClient,
-) {
+fn process_input(game: &mut Game, id: EntityId, input: &Input, client: &mut GameClient) {
     match input {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(key),
@@ -180,4 +178,3 @@ fn send_keys_to_server(client: &mut GameClient, input: Input) {
     client.push_input(input);
     info!("done");
 }
-

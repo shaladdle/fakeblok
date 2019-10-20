@@ -27,7 +27,10 @@ fn random_point(bottom_right: Point) -> Point {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Animation {
-    Pendulum { distance: Point, max_distance: Point },
+    Pendulum {
+        distance: Point,
+        max_distance: Point,
+    },
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -318,7 +321,7 @@ impl Game {
                 random_point(bottom_right),
                 square_side_length / 2.,
                 square_side_length / 2.,
-                );
+            );
             game.insert_entity(Entity {
                 position: square,
                 velocity: Point::default(),
@@ -328,7 +331,10 @@ impl Game {
                 color,
             });
         }
-        game.init_pendulum(SQUARE_3, game.positions[SQUARE_3].top_left + Point::new(-100., 200.));
+        game.init_pendulum(
+            SQUARE_3,
+            game.positions[SQUARE_3].top_left + Point::new(-100., 200.),
+        );
         game
     }
 
@@ -451,7 +457,10 @@ impl Game {
 
     fn init_pendulum(&mut self, entity: EntityId, midpoint: Point) {
         let distance = self.positions[entity].top_left - midpoint;
-        self.animations[entity] = Some(Animation::Pendulum { distance, max_distance: distance.abs() });
+        self.animations[entity] = Some(Animation::Pendulum {
+            distance,
+            max_distance: distance.abs(),
+        });
     }
 
     pub fn tick(&mut self, dt: f32) {
@@ -473,7 +482,10 @@ impl Game {
                 delta += self.start_move_entity(entity, self.velocities[entity].at_x(0.) * dt);
             }
             match self.animations[entity] {
-                Some(Animation::Pendulum { ref mut distance, max_distance }) => {
+                Some(Animation::Pendulum {
+                    ref mut distance,
+                    max_distance,
+                }) => {
                     *distance += delta;
                     // I don't know what this is doing but it's kind of interesting.
                     self.velocities[entity] = (max_distance * PENDULUM_FORCE).sqrt()

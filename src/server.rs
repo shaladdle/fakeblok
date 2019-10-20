@@ -1,10 +1,27 @@
-use crate::{game::{self, EntityId, Point}, rpc_service::{self, Game as _}};
-use futures::{prelude::*, future::{self, Ready}};
+use crate::{
+    game::{self, EntityId, Point},
+    rpc_service::{self, Game as _},
+};
+use futures::{
+    future::{self, Ready},
+    prelude::*,
+};
 use log::{debug, error, info};
-use piston_window::{Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input,
-Loop, NoWindow, WindowSettings,};
-use std::{io, net::SocketAddr, pin::Pin, sync::{Arc, Mutex}, time::{Duration, Instant}};
-use tarpc::{context, server::{self, Channel}};
+use piston_window::{
+    Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Loop,
+    NoWindow, WindowSettings,
+};
+use std::{
+    io,
+    net::SocketAddr,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use tarpc::{
+    context,
+    server::{self, Channel},
+};
 use tokio::{runtime::current_thread, sync::watch};
 
 pub struct Server {
@@ -58,7 +75,7 @@ impl Server {
             .for_each(|_| async {})
             .await;
 
-            Ok(())
+        Ok(())
     }
 
     pub fn run_game(server_addr: SocketAddr) -> io::Result<()> {
@@ -112,9 +129,7 @@ impl Server {
         info!("end :(");
         Ok(())
     }
-
 }
-
 
 #[derive(Clone)]
 pub struct ConnectionHandler {

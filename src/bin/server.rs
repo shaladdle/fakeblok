@@ -25,7 +25,6 @@ fn main() -> io::Result<()> {
         .unwrap_or_else(|e| panic!(r#"--port value "{}" invalid: {}"#, port, e));
     let server_addr: SocketAddr = ([0, 0, 0, 0u8], port).into();
 
-
     info!("Starting game.");
     Server::run_game(server_addr)?;
     Ok(())
