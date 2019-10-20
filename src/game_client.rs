@@ -1,6 +1,5 @@
 use crate::{
     game::{self, EntityId, Game},
-    rpc_service,
 };
 use futures::future::TryFutureExt;
 use futures::Future;
@@ -16,15 +15,15 @@ use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
 
-pub struct GameClient {
-    pub id: EntityId,
+struct GameClient {
+    id: EntityId,
     game: Arc<Mutex<game::Game>>,
     inputs: mpsc::UnboundedSender<Input>,
 }
 
 async fn create_client(
     server_addr: &str,
-) -> io::Result<(rpc_service::GameClient, impl Future<Output = ()>)> {
+) -> io::Result<(crate::GameClient, impl Future<Output = ()>)> {
     let server_addr = match server_addr.parse() {
         Ok(s) => s,
         // TODO: Can we also pass the parse error as the detailed error?
@@ -37,7 +36,7 @@ async fn create_client(
     };
     let transport = tarpc_json_transport::connect(&server_addr).await?;
     let NewClient { client, dispatch } =
-        rpc_service::GameClient::new(client::Config::default(), transport);
+        crate::GameClient::new(client::Config::default(), transport);
     info!("Spawn dispatch");
     let dispatch = dispatch.unwrap_or_else(move |e| error!("Connection broken: {}", e));
     info!("Dispatch spawned");
@@ -45,7 +44,7 @@ async fn create_client(
 }
 
 async fn push_inputs(
-    mut client: rpc_service::GameClient,
+    mut client: crate::GameClient,
     mut inputs: mpsc::UnboundedReceiver<Input>,
 ) {
     while let Some(input) = inputs.next().await {
@@ -57,7 +56,7 @@ async fn push_inputs(
 }
 
 async fn repeated_poll_game_state(
-    mut client: rpc_service::GameClient,
+    mut client: crate::GameClient,
     game: Arc<Mutex<game::Game>>,
 ) {
     while let Ok(new_game) = client.poll_game_state(context::current()).await {
@@ -66,7 +65,7 @@ async fn repeated_poll_game_state(
 }
 
 impl GameClient {
-    pub fn new(server_addr: &str) -> io::Result<GameClient> {
+    fn new(server_addr: &str) -> io::Result<GameClient> {
         debug!("Creating runtime");
         let mut runtime = current_thread::Runtime::new().unwrap();
         debug!("Creating client to {}", server_addr);
@@ -84,11 +83,11 @@ impl GameClient {
         Ok(GameClient { id, game, inputs })
     }
 
-    pub fn push_input(&mut self, input: Input) {
+    fn push_input(&mut self, input: Input) {
         self.inputs.unbounded_send(input).unwrap();
     }
 
-    pub fn get_game(&mut self) -> Arc<Mutex<game::Game>> {
+    fn get_game(&mut self) -> Arc<Mutex<game::Game>> {
         self.game.clone()
     }
 }
@@ -104,12 +103,12 @@ fn process_input(game: &mut Game, id: EntityId, input: &Input, client: &mut Game
         }) if VALID_KEYS.contains(key) => match state {
             ButtonState::Press => {
                 if let Ok(_) = game.process_key_press(id, key) {
-                    send_keys_to_server(client, input.clone());
+                    client.push_input(input.clone());
                 }
             }
             ButtonState::Release => {
                 if let Ok(_) = game.process_key_release(id, key) {
-                    send_keys_to_server(client, input.clone());
+                    client.push_input(input.clone());
                 }
             }
         },
@@ -173,8 +172,3 @@ pub fn run_ui(server_addr: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn send_keys_to_server(client: &mut GameClient, input: Input) {
-    info!("send_key_to_server");
-    client.push_input(input);
-    info!("done");
-}

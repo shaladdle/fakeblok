@@ -1,6 +1,6 @@
 use crate::{
     game::{self, EntityId, Point},
-    rpc_service::{self, Game as _},
+    Game as _,
 };
 use futures::{
     future::{self, Ready},
@@ -138,7 +138,7 @@ pub struct ConnectionHandler {
     game_rx: watch::Receiver<game::Game>,
 }
 
-impl rpc_service::Game for ConnectionHandler {
+impl crate::Game for ConnectionHandler {
     type GetEntityIdFut = Ready<EntityId>;
 
     fn get_entity_id(self, _: context::Context) -> Self::GetEntityIdFut {
