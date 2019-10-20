@@ -189,7 +189,7 @@ impl std::ops::Div for Point {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Game {
     square_side_length: GameInt,
     pub bottom_right: Point,
