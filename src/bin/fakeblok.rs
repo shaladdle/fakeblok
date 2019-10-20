@@ -1,8 +1,7 @@
 use clap::{App, Arg};
 use fakeblok::game_client;
 use pretty_env_logger;
-use std::io;
-use tokio::runtime::Runtime;
+use std::{io, net::SocketAddr};
 
 fn main() -> io::Result<()> {
     pretty_env_logger::init();
@@ -17,7 +16,8 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let server_addr = flags.value_of("server_addr").unwrap();
-    let runtime = Runtime::new()?;
-    tokio_executor::with_default(&mut runtime.executor(), || game_client::run_ui(server_addr))?;
+    let server_addr: SocketAddr = server_addr.parse()
+        .unwrap_or_else(|e| panic!(r#"--server_addr value "{}" invalid: {}"#, server_addr, e));
+    game_client::run_ui(server_addr)?;
     Ok(())
 }
