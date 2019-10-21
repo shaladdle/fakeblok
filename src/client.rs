@@ -140,7 +140,10 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     };
 
     let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND));
+    let mut time_in_current_bucket = 0.;
+    let mut ticks_in_current_bucket = 0;
     info!("start!");
+
     while let Some(event) = events.next(&mut window) {
         match event {
             Event::Input(ref input, _) => {
@@ -187,7 +190,9 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
                 match lp {
                     Loop::Idle(_) => {}
                     Loop::Update(args) => {
-                        game.tick(args.dt as f32);
+                        game.tick(args.dt as f32,
+                                  &mut time_in_current_bucket,
+                                  &mut ticks_in_current_bucket);
                     }
                     Loop::AfterRender(_) => {}
                     lp => panic!("Didn't expect {:?}", lp),

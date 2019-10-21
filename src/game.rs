@@ -206,8 +206,6 @@ pub struct Game {
     #[serde(with = "serde_slab")]
     pub colors: Slab<types::Rectangle<GameInt>>,
     time: f32,
-    time_in_current_bucket: f32,
-    ticks_in_current_bucket: i32,
 }
 
 mod serde_slab {
@@ -303,8 +301,6 @@ impl Game {
             moved_this_action: Slab::new(),
             colors: Slab::new(),
             time: 0.,
-            time_in_current_bucket: 0.,
-            ticks_in_current_bucket: 0,
         };
         game.insert_entity(Entity {
             position: square3,
@@ -463,17 +459,17 @@ impl Game {
         });
     }
 
-    pub fn tick(&mut self, dt: f32) {
+    pub fn tick(&mut self, dt: f32, time_in_current_bucket: &mut f32, ticks_in_current_bucket: &mut i32) {
         self.time += dt;
-        self.time_in_current_bucket += dt;
-        self.ticks_in_current_bucket += 1;
-        if self.time_in_current_bucket >= 0.25 {
-            let ticks_per_sec = self.ticks_in_current_bucket as f32 / self.time_in_current_bucket;
+        *time_in_current_bucket += dt;
+        *ticks_in_current_bucket += 1;
+        if *time_in_current_bucket >= 0.25 {
+            let ticks_per_sec = *ticks_in_current_bucket as f32 / *time_in_current_bucket;
             if ticks_per_sec < 990. {
                 info!("{} ticks/s", ticks_per_sec);
             }
-            self.time_in_current_bucket = 0.;
-            self.ticks_in_current_bucket = 0;
+            *time_in_current_bucket = 0.;
+            *ticks_in_current_bucket = 0;
         }
         for entity in 0..self.velocities.len() {
             let mut delta = Point::default();
