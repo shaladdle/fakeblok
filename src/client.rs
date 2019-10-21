@@ -7,7 +7,7 @@ use piston_window::{
     clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
-use std::{io, net::SocketAddr, sync::{Arc, Condvar, Mutex}, thread};
+use std::{io, net::SocketAddr, sync::{Arc, Condvar, Mutex}, thread, time::{Duration, Instant}};
 use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
@@ -64,12 +64,20 @@ impl StatePoller {
         }
 
         loop {
+            let now = Instant::now();
+
             match self.client.poll_game_state(context::current()).await {
                 Ok(new_game) => *self.game.lock().unwrap() = new_game,
                 Err(e) => {
                     error!("Failed to poll game state: {}", e);
                     break;
                 }
+            }
+
+            let elapsed = now.elapsed();
+            const FIFTY_MICROS: Duration = Duration::from_micros(50);
+            if elapsed > FIFTY_MICROS {
+                info!("Polling game state took {:?}", elapsed);
             }
         }
     }
