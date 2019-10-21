@@ -390,7 +390,7 @@ impl Game {
         entity_id
     }
 
-    fn entity_overlap(&mut self, entity_segments: &[Rectangle], other: EntityId) -> Point {
+    fn entity_overlap(&self, entity_segments: &[Rectangle], other: EntityId) -> Point {
         entity_segments
             .iter()
             .map(|entity_segment| {
