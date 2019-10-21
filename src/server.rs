@@ -31,17 +31,29 @@ pub struct Server {
     game_rx: watch::Receiver<game::Game>,
 }
 
+struct Disconnect {
+    game: Arc<Mutex<game::Game>>,
+    client_id: EntityId,
+}
+
+impl Drop for Disconnect {
+    fn drop(&mut self) {
+        info!("Player {} has disconnected.", self.client_id);
+        self.game.lock().unwrap().remove_entity(self.client_id);
+    }
+}
+
 impl Server {
     pub fn new(game: Arc<Mutex<game::Game>>, game_rx: watch::Receiver<game::Game>) -> Self {
         Server { game, game_rx }
     }
 
-    pub fn new_handler(&self, entity_id: EntityId) -> io::Result<ConnectionHandler> {
-        Ok(ConnectionHandler {
+    pub fn new_handler(&self, entity_id: EntityId) -> ConnectionHandler {
+        ConnectionHandler {
             entity_id,
             game: self.game.clone(),
             game_rx: self.game_rx.clone(),
-        })
+        }
     }
 
     async fn run(&mut self, server_addr: SocketAddr) -> io::Result<()> {
@@ -58,18 +70,18 @@ impl Server {
                     let mut game = game.lock().unwrap();
                     game.insert_new_player_square()
                 };
-                let handler = self.new_handler(entity_id).unwrap();
+                let handler = self.new_handler(entity_id);
                 info!("Handler for player with entity id {} created", entity_id);
                 async move {
                     info!("Creating response future");
+                    // When this future is dropped, the player will be disconnected.
+                    let _disconnect = Disconnect { game, client_id: entity_id };
                     let mut response_stream = channel.respond_with(handler.serve());
                     while let Some(handler) = response_stream.next().await {
                         // No need to do response handling concurrently, because these futures are
                         // very short-lived.
                         handler?.await;
                     }
-                    info!("Player {} has disconnected.", entity_id);
-                    game.lock().unwrap().remove_entity(entity_id);
                     Ok::<_, io::Error>(())
                 }
             })
