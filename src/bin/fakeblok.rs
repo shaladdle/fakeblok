@@ -1,5 +1,5 @@
 use clap::{App, Arg};
-use fakeblok::game_client;
+use fakeblok::client;
 use pretty_env_logger;
 use std::{io, net::SocketAddr};
 
@@ -18,6 +18,6 @@ fn main() -> io::Result<()> {
     let server_addr = flags.value_of("server_addr").unwrap();
     let server_addr: SocketAddr = server_addr.parse()
         .unwrap_or_else(|e| panic!(r#"--server_addr value "{}" invalid: {}"#, server_addr, e));
-    game_client::run_ui(server_addr)?;
+    client::run_ui(server_addr)?;
     Ok(())
 }

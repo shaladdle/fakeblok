@@ -1,7 +1,7 @@
 use piston_window::Input;
 
 pub mod game;
-pub mod game_client;
+pub mod client;
 pub mod server;
 
 #[tarpc::service]
