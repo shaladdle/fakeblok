@@ -254,16 +254,20 @@ mod serde_slab {
             where
                 M: MapAccess<'de>,
             {
-                let mut map = Slab::with_capacity(access.size_hint().unwrap_or(0));
+                let mut max_value = 0;
                 let mut hash_map = HashMap::<usize, _>::new();
                 while let Some((key, value)) = access.next_entry()? {
                     hash_map.insert(key, value);
+                    max_value = max_value.max(key);
                 }
 
+                let mut map = Slab::with_capacity(max_value);
                 for _ in 0..hash_map.len() {
                     let entry = map.vacant_entry();
                     let key = entry.key();
-                    entry.insert(hash_map.remove(&key).unwrap());
+                    if let Some(v) = hash_map.remove(&key) {
+                        entry.insert(v);
+                    }
                 }
 
                 Ok(map)
@@ -405,6 +409,9 @@ impl Game {
         self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
         let mut overlap = Point::default();
         for id in 0..self.positions.len() {
+            if !self.positions.contains(id) {
+                continue;
+            }
             if id == entity {
                 continue;
             }
@@ -472,6 +479,9 @@ impl Game {
             *ticks_in_current_bucket = 0;
         }
         for entity in 0..self.velocities.len() {
+            if !self.velocities.contains(entity) {
+                continue;
+            }
             let mut delta = Point::default();
             if !self.velocities[entity].is_origin() {
                 delta += self.start_move_entity(entity, self.velocities[entity].at_y(0.) * dt);
