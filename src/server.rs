@@ -100,7 +100,7 @@ impl Server {
 
         let mut window: NoWindow = WindowSettings::new("shapes", [0; 2]).build().unwrap();
 
-        let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND));
+        let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND).ups_reset(0));
         let mut time_in_current_bucket = 0.;
         let mut ticks_in_current_bucket = 0;
         info!("start!");
@@ -118,7 +118,6 @@ impl Server {
                                       &mut time_in_current_bucket,
                                       &mut ticks_in_current_bucket);
                         }
-                        Loop::AfterRender(_) => {}
                         lp => panic!("Didn't expect {:?}", lp),
                     }
                     let game = game.clone();

@@ -139,7 +139,7 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
         }
     };
 
-    let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND));
+    let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND).ups_reset(0));
     let mut time_in_current_bucket = 0.;
     let mut ticks_in_current_bucket = 0;
     info!("start!");
