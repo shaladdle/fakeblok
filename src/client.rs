@@ -12,6 +12,8 @@ use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
 
+const UPDATES_PER_SECOND: u64 = 200;
+
 /// A task that pushes player inputs to the server.
 struct InputPusher {
     client: crate::GameClient,
@@ -137,7 +139,7 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
         }
     };
 
-    let mut events = Events::new(EventSettings::new().ups(1000));
+    let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND));
     info!("start!");
     while let Some(event) = events.next(&mut window) {
         match event {

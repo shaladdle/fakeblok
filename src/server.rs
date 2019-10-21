@@ -24,6 +24,8 @@ use tarpc::{
 };
 use tokio::{runtime::current_thread, sync::watch};
 
+const UPDATES_PER_SECOND: u64 = 200;
+
 pub struct Server {
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
@@ -98,7 +100,7 @@ impl Server {
 
         let mut window: NoWindow = WindowSettings::new("shapes", [0; 2]).build().unwrap();
 
-        let mut events = Events::new(EventSettings::new().ups(1000));
+        let mut events = Events::new(EventSettings::new().ups(UPDATES_PER_SECOND));
         info!("start!");
         while let Some(event) = events.next(&mut window) {
             match event {
@@ -168,11 +170,11 @@ impl crate::Game for ConnectionHandler {
         future::ready(())
     }
 
-    type PollGameStateFut = Pin<Box<dyn Future<Output = game::Game> + Send>>;
+    type PollGameStateFut = Pin<Box<dyn Future<Output = game::Game>>>;
 
     fn poll_game_state(mut self, _: context::Context) -> Self::PollGameStateFut {
         const FIVE_MILLIS: Duration = Duration::from_millis(5);
-        async move {
+        Box::pin(async move {
             let now = Instant::now();
             let result = self.game_rx.recv().await.unwrap();
             let elapsed = now.elapsed();
@@ -180,8 +182,7 @@ impl crate::Game for ConnectionHandler {
                 info!("poll_game_state() took {:?}", elapsed);
             }
             result
-        }
-            .boxed()
+        })
     }
 }
 
