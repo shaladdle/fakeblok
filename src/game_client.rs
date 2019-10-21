@@ -33,9 +33,8 @@ impl InputPusher {
 /// Also is responsible for waking the main thread after the first poll.
 struct StatePoller {
     client: crate::GameClient,
-    client_id: Arc<Mutex<EntityId>>,
     game: Arc<Mutex<game::Game>>,
-    started: Arc<(Mutex<bool>, Condvar)>,
+    client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
 }
 
 impl StatePoller {
@@ -49,13 +48,11 @@ impl StatePoller {
         match future::join(game_state, client_id).await {
             (Ok(game_state), Ok(client_id)) => {
                 // First poll notifies the main thread.
-                *self.client_id.lock().unwrap() = client_id;
                 *self.game.lock().unwrap() = game_state;
 
                 // Let the main thread know we've started.
-                let (lock, cvar) = &*self.started;
-                let mut started = lock.lock().unwrap();
-                *started = true;
+                let (lock, cvar) = &*self.client_id;
+                *lock.lock().unwrap() = Some(client_id);
                 cvar.notify_one();
             }
             (Err(e), _) | (_, Err(e)) => {
@@ -91,13 +88,12 @@ async fn create_client(
 async fn spawn_tasks(
     server_addr: SocketAddr,
     game: Arc<Mutex<game::Game>>,
-    client_id: Arc<Mutex<EntityId>>,
-    started: Arc<(Mutex<bool>, Condvar)>,
+    client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
     inputs: mpsc::UnboundedReceiver<Input>
 ) -> io::Result<()> {
     let (client, dispatch) = create_client(server_addr).await?;
     tokio::spawn(dispatch);
-    tokio::spawn(StatePoller { client: client.clone(), client_id, game: game.clone(), started }.run());
+    tokio::spawn(StatePoller { client: client.clone(), client_id, game: game.clone() }.run());
     tokio::spawn(InputPusher { client, inputs }.run());
     Ok(())
 }
@@ -115,18 +111,16 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
 
     info!("Connecting to server");
     let game = Arc::new(Mutex::new(game::Game::default()));
-    let client_id = Arc::new(Mutex::new(0));
-    let started = Arc::new((Mutex::new(false), Condvar::new()));
+    let client_id = Arc::new((Mutex::new(None), Condvar::new()));
     let (inputs, rx) = mpsc::unbounded();
 
     let game2 = game.clone();
     let client_id2 = client_id.clone();
-    let started2 = started.clone();
 
     thread::spawn(move || {
         let mut runtime = current_thread::Runtime::new().unwrap();
         runtime.spawn(async move {
-            if let Err(e) = spawn_tasks(server_addr, game2, client_id2, started2, rx).await {
+            if let Err(e) = spawn_tasks(server_addr, game2, client_id2, rx).await {
                 error!("Failed to start all client tasks: {}", e);
             };
         });
@@ -134,13 +128,15 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     });
 
     // Wait for game state to be initialized.
-    let (lock, cvar) = &*started;
-    let mut started = lock.lock().unwrap();
-    while !*started {
-        started = cvar.wait(started).unwrap();
-    }
+    let (lock, cvar) = &*client_id;
+    let mut client_id = lock.lock().unwrap();
+    let client_id = loop {
+        match *client_id {
+            Some(client_id) => break client_id,
+            None => client_id = cvar.wait(client_id).unwrap(),
+        }
+    };
 
-    let client_id = *client_id.lock().unwrap();
     let mut events = Events::new(EventSettings::new().ups(1000));
     info!("start!");
     while let Some(event) = events.next(&mut window) {
