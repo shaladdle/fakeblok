@@ -261,15 +261,28 @@ mod serde_slab {
                     max_value = max_value.max(key);
                 }
 
-                let mut map = Slab::with_capacity(max_value);
-                for _ in 0..hash_map.len() {
+                let mut map = Slab::with_capacity(max_value + 1);
+                let mut to_delete = Vec::with_capacity(max_value + 1 - hash_map.len());
+                for _ in 0..=max_value {
                     let entry = map.vacant_entry();
                     let key = entry.key();
-                    if let Some(v) = hash_map.remove(&key) {
-                        entry.insert(v);
+                    match hash_map.remove(&key) {
+                        Some(v) => {
+                            entry.insert(v);
+                        }
+                        None => {
+                            // The same key will keep being returned by vacant_entry() unless
+                            // we fill it up with something. We just need to delete it later.
+                            entry.insert(T::default());
+                            to_delete.push(key);
+                        }
                     }
                 }
+                for key in to_delete {
+                    map.remove(key);
+                }
 
+                assert_eq!(0, hash_map.len());
                 Ok(map)
             }
         }
