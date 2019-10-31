@@ -370,6 +370,7 @@ impl Game {
     }
 
     pub fn remove_entity(&mut self, entity: EntityId) {
+        info!("Removing entity {}", entity);
         self.positions.remove(entity);
         self.velocities.remove(entity);
         self.animations.remove(entity);
@@ -388,6 +389,7 @@ impl Game {
             self.moved_this_action.insert(entity.moved_this_action)
         );
         assert_eq!(entity_id, self.colors.insert(entity.color));
+        info!("Inserted entity {}", entity_id);
         entity_id
     }
 
@@ -422,7 +424,7 @@ impl Game {
         let mut entity_segments = vec![];
         self.positions[entity].segments(bottom_right, |r| entity_segments.push(r));
         let mut overlap = Point::default();
-        for id in 0..self.positions.len() {
+        for id in 0..self.positions.capacity() {
             if !self.positions.contains(id) {
                 continue;
             }
@@ -459,15 +461,12 @@ impl Game {
             Key::S => self.velocities[id].y = 1. * MOVE_VELOCITY,
             Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
             Key::Space => {
-                info!("Inserting projectile");
                 let mut projectile = self.positions[id];
                 projectile.top_left += self.velocities[id];
                 projectile.width /= 2.;
                 projectile.height /= 2.;
                 let mut color = self.colors[id];
                 color[0] /= 2.;
-                color[1] /= 2.;
-                color[2] /= 2.;
                 self.insert_entity(Entity {
                     position: projectile,
                     velocity: self.velocities[id] * 3.,
@@ -516,8 +515,9 @@ impl Game {
             *time_in_current_bucket = 0.;
             *ticks_in_current_bucket = 0;
         }
-        for entity in 0..self.velocities.len() {
+        for entity in 0..self.velocities.capacity() {
             if !self.velocities.contains(entity) {
+                info!("Skipping {}", entity);
                 continue;
             }
             let mut delta = Point::default();
