@@ -1,4 +1,4 @@
-use log::info;
+use log::{debug, info};
 use piston_window::{context::Context, rectangle, types, G2d, Key};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -508,16 +508,12 @@ impl Game {
         *time_in_current_bucket += dt;
         *ticks_in_current_bucket += 1;
         if *time_in_current_bucket >= 0.25 {
-            let ticks_per_sec = *ticks_in_current_bucket as f32 / *time_in_current_bucket;
-            if ticks_per_sec < 990. {
-                info!("{} ticks/s", ticks_per_sec);
-            }
             *time_in_current_bucket = 0.;
             *ticks_in_current_bucket = 0;
         }
         for entity in 0..self.velocities.capacity() {
             if !self.velocities.contains(entity) {
-                info!("Skipping {}", entity);
+                debug!("Skipping {}", entity);
                 continue;
             }
             let mut delta = Point::default();
