@@ -29,6 +29,9 @@ pub enum Animation {
         distance: Point,
         max_distance: Point,
     },
+    DisappearAfter {
+        secs: f32,
+    }
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -450,11 +453,24 @@ impl Game {
     }
 
     pub fn process_key_press(&mut self, id: EntityId, key: &Key) -> Result<(), InvalidKeyError> {
-        Ok(match key {
-            &Key::W => self.velocities[id].y = -1. * MOVE_VELOCITY,
-            &Key::A => self.velocities[id].x = -1. * MOVE_VELOCITY,
-            &Key::S => self.velocities[id].y = 1. * MOVE_VELOCITY,
-            &Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
+        Ok(match *key {
+            Key::W => self.velocities[id].y = -1. * MOVE_VELOCITY,
+            Key::A => self.velocities[id].x = -1. * MOVE_VELOCITY,
+            Key::S => self.velocities[id].y = 1. * MOVE_VELOCITY,
+            Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
+            Key::Space => {
+                info!("Inserting projectile");
+                let mut projectile_position = self.positions[id];
+                projectile_position.top_left += self.velocities[id];
+                self.insert_entity(Entity {
+                    position: projectile_position,
+                    velocity: self.velocities[id] * 3.,
+                    animation: Some(Animation::DisappearAfter{secs: 4.}),
+                    moveable: true,
+                    moved_this_action: false,
+                    color: self.colors[id],
+                });
+            }
             _ => return Err(InvalidKeyError),
         })
     }
@@ -512,6 +528,12 @@ impl Game {
                     // I don't know what this is doing but it's kind of interesting.
                     self.velocities[entity] = (max_distance * PENDULUM_FORCE).sqrt()
                         * ((PENDULUM_FORCE / max_distance).sqrt() * self.time).sin();
+                }
+                Some(Animation::DisappearAfter { ref mut secs }) => {
+                    *secs -= dt;
+                    if *secs <= 0. {
+                        self.remove_entity(entity);
+                    }
                 }
                 None => {}
             }

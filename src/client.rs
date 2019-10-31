@@ -2,7 +2,7 @@ use crate::game::{self, EntityId};
 use futures::{channel::mpsc, prelude::*};
 use log::{debug, error, info};
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use std::{
@@ -83,8 +83,8 @@ impl StatePoller {
             }
 
             let elapsed = now.elapsed();
-            const FIFTY_MICROS: Duration = Duration::from_micros(50);
-            if elapsed > FIFTY_MICROS {
+            const FIFTY_MILLIS: Duration = Duration::from_millis(50);
+            if elapsed > FIFTY_MILLIS {
                 info!("Polling game state took {:?}", elapsed);
             }
         }
@@ -122,8 +122,6 @@ async fn spawn_tasks(
     tokio::spawn(InputPusher { client, inputs }.run());
     Ok(())
 }
-
-const VALID_KEYS: [Key; 4] = [Key::W, Key::A, Key::S, Key::D];
 
 pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     let mut resolution = [512.; 2];
@@ -174,7 +172,7 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
                     button: Button::Keyboard(key),
                     state,
                     ..
-                }) if VALID_KEYS.contains(key) => {
+                }) => {
                     let mut game = game.lock().unwrap();
                     match state {
                         ButtonState::Press => {

@@ -141,8 +141,8 @@ impl Server {
                     game_tx.broadcast(game).unwrap();
 
                     let elapsed = now.elapsed();
-                    const FIFTY_MICROS: Duration = Duration::from_micros(50);
-                    if elapsed > FIFTY_MICROS {
+                    const TWO_MILLIS: Duration = Duration::from_millis(2);
+                    if elapsed > TWO_MILLIS {
                         info!("one game loop took {:?}", elapsed);
                     }
                 }
