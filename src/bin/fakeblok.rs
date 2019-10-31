@@ -16,7 +16,8 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let server_addr = flags.value_of("server_addr").unwrap();
-    let server_addr: SocketAddr = server_addr.parse()
+    let server_addr: SocketAddr = server_addr
+        .parse()
         .unwrap_or_else(|e| panic!(r#"--server_addr value "{}" invalid: {}"#, server_addr, e));
     client::run_ui(server_addr)?;
     Ok(())

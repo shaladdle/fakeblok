@@ -1,13 +1,17 @@
-use crate::{
-    game::{self, EntityId},
-};
-use futures::{prelude::*, channel::mpsc};
+use crate::game::{self, EntityId};
+use futures::{channel::mpsc, prelude::*};
 use log::{debug, error, info};
 use piston_window::{
     clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
-use std::{io, net::SocketAddr, sync::{Arc, Condvar, Mutex}, thread, time::{Duration, Instant}};
+use std::{
+    io,
+    net::SocketAddr,
+    sync::{Arc, Condvar, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
 use tarpc::client::{self, NewClient};
 use tarpc::context;
 use tokio::runtime::current_thread;
@@ -24,7 +28,11 @@ impl InputPusher {
     async fn run(mut self) {
         while let Some(input) = self.inputs.next().await {
             debug!("push_input({:?})", input);
-            if let Err(err) = self.client.push_input(context::current(), input.clone()).await {
+            if let Err(err) = self
+                .client
+                .push_input(context::current(), input.clone())
+                .await
+            {
                 error!("Error setting keys, {:?}: {:?}", input, err);
             }
         }
@@ -99,11 +107,18 @@ async fn spawn_tasks(
     server_addr: SocketAddr,
     game: Arc<Mutex<game::Game>>,
     client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
-    inputs: mpsc::UnboundedReceiver<Input>
+    inputs: mpsc::UnboundedReceiver<Input>,
 ) -> io::Result<()> {
     let (client, dispatch) = create_client(server_addr).await?;
     tokio::spawn(dispatch);
-    tokio::spawn(StatePoller { client: client.clone(), client_id, game: game.clone() }.run());
+    tokio::spawn(
+        StatePoller {
+            client: client.clone(),
+            client_id,
+            game: game.clone(),
+        }
+        .run(),
+    );
     tokio::spawn(InputPusher { client, inputs }.run());
     Ok(())
 }
@@ -154,30 +169,28 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
 
     while let Some(event) = events.next(&mut window) {
         match event {
-            Event::Input(ref input, _) => {
-                match input {
-                    Input::Button(ButtonArgs {
-                        button: Button::Keyboard(key),
-                        state,
-                        ..
-                    }) if VALID_KEYS.contains(key) => {
-                        let mut game = game.lock().unwrap();
-                        match state {
-                            ButtonState::Press => {
-                                if let Ok(_) = game.process_key_press(client_id, key) {
-                                    inputs.unbounded_send(input.clone()).unwrap();
-                                }
-                            }
-                            ButtonState::Release => {
-                                if let Ok(_) = game.process_key_release(client_id, key) {
-                                    inputs.unbounded_send(input.clone()).unwrap();
-                                }
+            Event::Input(ref input, _) => match input {
+                Input::Button(ButtonArgs {
+                    button: Button::Keyboard(key),
+                    state,
+                    ..
+                }) if VALID_KEYS.contains(key) => {
+                    let mut game = game.lock().unwrap();
+                    match state {
+                        ButtonState::Press => {
+                            if let Ok(_) = game.process_key_press(client_id, key) {
+                                inputs.unbounded_send(input.clone()).unwrap();
                             }
                         }
-                    },
-                    _ => {}
+                        ButtonState::Release => {
+                            if let Ok(_) = game.process_key_release(client_id, key) {
+                                inputs.unbounded_send(input.clone()).unwrap();
+                            }
+                        }
+                    }
                 }
-            }
+                _ => {}
+            },
             Event::Loop(Loop::Render(args)) => {
                 if resolution != args.window_size {
                     info!("Resizing {:?} => {:?}", resolution, args.window_size);
@@ -198,9 +211,11 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
                 match lp {
                     Loop::Idle(_) => {}
                     Loop::Update(args) => {
-                        game.tick(args.dt as f32,
-                                  &mut time_in_current_bucket,
-                                  &mut ticks_in_current_bucket);
+                        game.tick(
+                            args.dt as f32,
+                            &mut time_in_current_bucket,
+                            &mut ticks_in_current_bucket,
+                        );
                     }
                     Loop::AfterRender(_) => {}
                     lp => panic!("Didn't expect {:?}", lp),

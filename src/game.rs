@@ -10,8 +10,6 @@ pub struct InvalidKeyError;
 
 const PENDULUM_FORCE: Point = Point::new(54.4, 54.4);
 const MOVE_VELOCITY: GameInt = 50.;
-const SQUARE_3: EntityId = 0;
-const GREEN: types::Rectangle<GameInt> = [0.0, 1.0, 0.0, 1.0];
 
 fn random_color() -> types::Rectangle<GameInt> {
     let mut rng = rand::thread_rng();
@@ -303,11 +301,6 @@ pub struct Entity {
 
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
-        let square3 = Rectangle::new(
-            bottom_right / 50.,
-            square_side_length / 2.,
-            square_side_length / 2.,
-        );
         let mut game = Game {
             square_side_length,
             bottom_right,
@@ -319,15 +312,24 @@ impl Game {
             colors: Slab::new(),
             time: 0.,
         };
-        game.insert_entity(Entity {
-            position: square3,
-            velocity: Point::default(),
-            animation: None,
-            moveable: false,
-            moved_this_action: false,
-            color: GREEN,
-        });
         let mut rng = rand::thread_rng();
+        for _ in 0..100 {
+            let color = random_color();
+            let square = Rectangle::new(
+                random_point(bottom_right),
+                square_side_length / 2.,
+                square_side_length / 2.,
+            );
+            let id = game.insert_entity(Entity {
+                position: square,
+                velocity: Point::default(),
+                animation: None,
+                moveable: false,
+                moved_this_action: false,
+                color,
+            });
+            game.init_pendulum(id, game.positions[id].top_left + Point::new(-100., 200.));
+        }
         for _ in 0..100 {
             let color = random_color();
             let square = Rectangle::new(
@@ -339,15 +341,11 @@ impl Game {
                 position: square,
                 velocity: Point::default(),
                 animation: None,
-                moveable: rng.gen(),
+                moveable: rng.gen_range(1, 4) == 1,
                 moved_this_action: false,
                 color,
             });
         }
-        game.init_pendulum(
-            SQUARE_3,
-            game.positions[SQUARE_3].top_left + Point::new(-100., 200.),
-        );
         game
     }
 
@@ -479,7 +477,12 @@ impl Game {
         });
     }
 
-    pub fn tick(&mut self, dt: f32, time_in_current_bucket: &mut f32, ticks_in_current_bucket: &mut i32) {
+    pub fn tick(
+        &mut self,
+        dt: f32,
+        time_in_current_bucket: &mut f32,
+        ticks_in_current_bucket: &mut i32,
+    ) {
         self.time += dt;
         *time_in_current_bucket += dt;
         *ticks_in_current_bucket += 1;

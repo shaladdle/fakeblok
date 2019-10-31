@@ -75,7 +75,10 @@ impl Server {
                 async move {
                     info!("Creating response future");
                     // When this future is dropped, the player will be disconnected.
-                    let _disconnect = Disconnect { game, client_id: entity_id };
+                    let _disconnect = Disconnect {
+                        game,
+                        client_id: entity_id,
+                    };
                     let mut response_stream = channel.respond_with(handler.serve());
                     while let Some(handler) = response_stream.next().await {
                         // No need to do response handling concurrently, because these futures are
@@ -126,9 +129,11 @@ impl Server {
                     match lp {
                         Loop::Idle(_) => {}
                         Loop::Update(args) => {
-                            game.tick(args.dt as f32,
-                                      &mut time_in_current_bucket,
-                                      &mut ticks_in_current_bucket);
+                            game.tick(
+                                args.dt as f32,
+                                &mut time_in_current_bucket,
+                                &mut ticks_in_current_bucket,
+                            );
                         }
                         lp => panic!("Didn't expect {:?}", lp),
                     }
