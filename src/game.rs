@@ -460,15 +460,21 @@ impl Game {
             Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
             Key::Space => {
                 info!("Inserting projectile");
-                let mut projectile_position = self.positions[id];
-                projectile_position.top_left += self.velocities[id];
+                let mut projectile = self.positions[id];
+                projectile.top_left += self.velocities[id];
+                projectile.width /= 2.;
+                projectile.height /= 2.;
+                let mut color = self.colors[id];
+                color[0] /= 2.;
+                color[1] /= 2.;
+                color[2] /= 2.;
                 self.insert_entity(Entity {
-                    position: projectile_position,
+                    position: projectile,
                     velocity: self.velocities[id] * 3.,
                     animation: Some(Animation::DisappearAfter{secs: 4.}),
                     moveable: true,
                     moved_this_action: false,
-                    color: self.colors[id],
+                    color,
                 });
             }
             _ => return Err(InvalidKeyError),
