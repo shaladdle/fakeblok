@@ -70,9 +70,12 @@ impl Server {
                     let mut game = game.lock().unwrap();
                     game.insert_new_player_square()
                 };
-                let handler = self.new_handler(entity_id);
+                let mut handler = self.new_handler(entity_id);
                 info!("Handler for player with entity id {} created", entity_id);
                 async move {
+                    // Wait until the game state contains the new player.
+                    while !handler.game_rx.recv().await.unwrap().positions.contains(entity_id) {}
+
                     info!("Creating response future");
                     // When this future is dropped, the player will be disconnected.
                     let _disconnect = Disconnect {
