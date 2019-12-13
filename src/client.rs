@@ -14,7 +14,8 @@ use std::{
 };
 use tarpc::client::{self, NewClient};
 use tarpc::context;
-use tokio::runtime::current_thread;
+use tokio::runtime::Runtime;
+use tokio_serde::formats::Json;
 
 const UPDATES_PER_SECOND: u64 = 200;
 
@@ -96,31 +97,33 @@ async fn create_client(
 ) -> io::Result<(crate::GameClient, impl Future<Output = ()>)> {
     info!("Creating client to {}", server_addr);
 
-    let transport = tarpc_json_transport::connect(&server_addr).await?;
+    let transport = tarpc::serde_transport::tcp::connect(&server_addr, Json::default()).await?;
     let NewClient { client, dispatch } =
         crate::GameClient::new(client::Config::default(), transport);
     let dispatch = dispatch.unwrap_or_else(move |e| error!("Connection broken: {}", e));
     Ok((client, dispatch))
 }
 
-async fn spawn_tasks(
+async fn run_tasks(
     server_addr: SocketAddr,
     game: Arc<Mutex<game::Game>>,
     client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
     inputs: mpsc::UnboundedReceiver<Input>,
 ) -> io::Result<()> {
     let (client, dispatch) = create_client(server_addr).await?;
-    tokio::spawn(dispatch);
-    tokio::spawn(
-        StatePoller {
-            client: client.clone(),
-            client_id,
-            game: game.clone(),
-        }
-        .run(),
-    );
-    tokio::spawn(InputPusher { client, inputs }.run());
-    Ok(())
+    let (r1, r2, r3) = future::join3(
+        tokio::spawn(dispatch),
+        tokio::spawn(
+            StatePoller {
+                client: client.clone(),
+                client_id,
+                game: game.clone(),
+            }
+            .run(),
+        ),
+        tokio::spawn(InputPusher { client, inputs }.run()),
+    ).await;
+    r1.and(r2).and(r3).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
 pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
@@ -141,13 +144,13 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     let client_id2 = client_id.clone();
 
     thread::spawn(move || {
-        let mut runtime = current_thread::Runtime::new().unwrap();
-        runtime.spawn(async move {
-            if let Err(e) = spawn_tasks(server_addr, game2, client_id2, rx).await {
-                error!("Failed to start all client tasks: {}", e);
-            };
-        });
-        runtime.run().unwrap();
+        Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                if let Err(e) = run_tasks(server_addr, game2, client_id2, rx).await {
+                    error!("{}", e);
+                };
+            });
     });
 
     // Wait for game state to be initialized.

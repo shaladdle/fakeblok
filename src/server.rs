@@ -22,7 +22,8 @@ use tarpc::{
     context,
     server::{self, Channel},
 };
-use tokio::{runtime::current_thread, sync::watch};
+use tokio::{runtime::Runtime, sync::watch};
+use tokio_serde::formats::Json;
 
 const UPDATES_PER_SECOND: u64 = 200;
 
@@ -57,9 +58,8 @@ impl Server {
     }
 
     async fn run(&mut self, server_addr: SocketAddr) -> io::Result<()> {
-        // tarpc_json_transport is provided by the associated crate tarpc-json-transport. It makes it easy
-        // to start up a serde-powered json serialization strategy over TCP.
-        tarpc_json_transport::listen(&server_addr)?
+        tarpc::serde_transport::tcp::listen(&server_addr, Json::default)
+            .await?
             // Ignore accept errors.
             .filter_map(|r| future::ready(r.ok()))
             .map(server::BaseChannel::with_defaults)
@@ -106,14 +106,14 @@ impl Server {
 
         std::thread::spawn(move || {
             info!("Starting server.");
-            let mut runtime = current_thread::Runtime::new().unwrap();
-            runtime.spawn(async move {
-                if let Err(err) = server.run(server_addr).await {
-                    error!("Server died: {:?}", err);
-                }
-            });
-            runtime.run().unwrap();
-            info!("Server done.");
+            Runtime::new()
+                .unwrap()
+                .block_on(async move {
+                    match server.run(server_addr).await {
+                        Err(err) => error!("Server died: {:?}", err),
+                        Ok(()) => info!("Server done."),
+                    }
+                });
         });
 
         let mut window: NoWindow = WindowSettings::new("shapes", [0; 2]).build().unwrap();
