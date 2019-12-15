@@ -1,5 +1,5 @@
 use log::{debug, info};
-use piston_window::{context::Context, rectangle, types, G2d, Key};
+use piston_window::{context::Context, rectangle, types, G2d};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use slab::Slab;
@@ -18,8 +18,8 @@ fn random_color() -> types::Rectangle<GameInt> {
 
 fn random_point(bottom_right: Point) -> Point {
     let mut rng = rand::thread_rng();
-    let x: GameInt = rng.gen_range(0., bottom_right.x as f32);
-    let y: GameInt = rng.gen_range(0., bottom_right.y as f32);
+    let x: GameInt = rng.gen_range(0., bottom_right.x as GameInt);
+    let y: GameInt = rng.gen_range(0., bottom_right.y as GameInt);
     Point { x, y }
 }
 
@@ -302,6 +302,40 @@ pub struct Entity {
     pub color: types::Rectangle<GameInt>,
 }
 
+/// A game input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Input {
+    /// Specifies movement or lackthereof.
+    /// - A sign of None stops movement along the specified Component.
+    /// - Otherwise, moves along the specified component with direction corresponding to the sign.
+    Move(Component, Option<Sign>),
+    Shoot,
+}
+
+/// Component of a vector. Either x-component or y-component.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Component { X, Y }
+
+impl Component {
+    fn extract(self, point: &mut Point) -> &mut GameInt {
+        match self {
+            Component::X => &mut point.x,
+            Component::Y => &mut point.y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Sign { Positive, Negative }
+
+fn magnitude_of(sign: Option<Sign>) -> GameInt {
+    match sign {
+        Some(Sign::Positive) => 1.,
+        Some(Sign::Negative) => -1.,
+        None => 0.,
+    }
+}
+
 impl Game {
     pub fn new(bottom_right: Point, square_side_length: GameInt) -> Game {
         let mut game = Game {
@@ -454,13 +488,12 @@ impl Game {
         delta - overlap
     }
 
-    pub fn process_key_press(&mut self, id: EntityId, key: &Key) -> Result<(), InvalidKeyError> {
-        Ok(match *key {
-            Key::W => self.velocities[id].y = -1. * MOVE_VELOCITY,
-            Key::A => self.velocities[id].x = -1. * MOVE_VELOCITY,
-            Key::S => self.velocities[id].y = 1. * MOVE_VELOCITY,
-            Key::D => self.velocities[id].x = 1. * MOVE_VELOCITY,
-            Key::Space => {
+    pub fn process_input(&mut self, id: EntityId, input: Input) {
+        match input {
+            Input::Move(component, sign) => {
+                *component.extract(&mut self.velocities[id]) = MOVE_VELOCITY * magnitude_of(sign);
+            }
+            Input::Shoot => {
                 let mut projectile = self.positions[id];
                 projectile.top_left += self.velocities[id];
                 projectile.width /= 2.;
@@ -476,18 +509,7 @@ impl Game {
                     color,
                 });
             }
-            _ => return Err(InvalidKeyError),
-        })
-    }
-
-    pub fn process_key_release(&mut self, id: EntityId, key: &Key) -> Result<(), InvalidKeyError> {
-        Ok(match key {
-            &Key::W => self.velocities[id].y = 0.,
-            &Key::A => self.velocities[id].x = 0.,
-            &Key::S => self.velocities[id].y = 0.,
-            &Key::D => self.velocities[id].x = 0.,
-            _ => return Err(InvalidKeyError),
-        })
+        }
     }
 
     fn init_pendulum(&mut self, entity: EntityId, midpoint: Point) {

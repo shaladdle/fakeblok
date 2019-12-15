@@ -8,8 +8,7 @@ use futures::{
 };
 use log::{debug, error, info};
 use piston_window::{
-    Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Loop,
-    NoWindow, WindowSettings,
+    Event, EventLoop, EventSettings, Events, Loop, NoWindow, WindowSettings,
 };
 use std::{
     io,
@@ -173,24 +172,9 @@ impl crate::Game for ConnectionHandler {
 
     type PushInputFut = Ready<()>;
 
-    fn push_input(self, _: context::Context, input: Input) -> Self::PushInputFut {
+    fn push_input(self, _: context::Context, input: game::Input) -> Self::PushInputFut {
         debug!("push_input({:?})", input);
-        let mut game = self.game.lock().unwrap();
-        match input {
-            Input::Button(ButtonArgs {
-                button: Button::Keyboard(key),
-                state,
-                ..
-            }) => match state {
-                ButtonState::Press => {
-                    let _ = game.process_key_press(self.entity_id, &key);
-                }
-                ButtonState::Release => {
-                    let _ = game.process_key_release(self.entity_id, &key);
-                }
-            },
-            _ => {}
-        }
+        self.game.lock().unwrap().process_input(self.entity_id, input);
         future::ready(())
     }
 

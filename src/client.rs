@@ -2,10 +2,11 @@ use crate::game::{self, EntityId};
 use futures::{channel::mpsc, prelude::*};
 use log::{debug, error, info};
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Key, Input,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use std::{
+    convert::TryFrom,
     io,
     net::SocketAddr,
     sync::{Arc, Condvar, Mutex},
@@ -22,7 +23,7 @@ const UPDATES_PER_SECOND: u64 = 200;
 /// A task that pushes player inputs to the server.
 struct InputPusher {
     client: crate::GameClient,
-    inputs: mpsc::UnboundedReceiver<Input>,
+    inputs: mpsc::UnboundedReceiver<game::Input>,
 }
 
 impl InputPusher {
@@ -108,7 +109,7 @@ async fn run_tasks(
     server_addr: SocketAddr,
     game: Arc<Mutex<game::Game>>,
     client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
-    inputs: mpsc::UnboundedReceiver<Input>,
+    inputs: mpsc::UnboundedReceiver<game::Input>,
 ) -> io::Result<()> {
     let (client, dispatch) = create_client(server_addr).await?;
     let (r1, r2, r3) = future::join3(
@@ -124,6 +125,26 @@ async fn run_tasks(
         tokio::spawn(InputPusher { client, inputs }.run()),
     ).await;
     r1.and(r2).and(r3).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+}
+
+impl TryFrom<(&ButtonState, &Key)> for game::Input {
+    type Error = game::InvalidKeyError;
+
+    fn try_from((state, key): (&ButtonState, &Key)) -> Result<game::Input, game::InvalidKeyError> {
+        use game::{Input, Component, Sign};
+        Ok(match (*state, *key) {
+            (ButtonState::Press, Key::W) => Input::Move(Component::Y, Some(Sign::Negative)),
+            (ButtonState::Press, Key::A) => Input::Move(Component::X, Some(Sign::Negative)),
+            (ButtonState::Press, Key::S) => Input::Move(Component::Y, Some(Sign::Positive)),
+            (ButtonState::Press, Key::D) => Input::Move(Component::X, Some(Sign::Positive)),
+            (ButtonState::Press, Key::Space) => Input::Shoot,
+            (ButtonState::Release, Key::W) => Input::Move(Component::Y, None),
+            (ButtonState::Release, Key::A) => Input::Move(Component::X, None),
+            (ButtonState::Release, Key::S) => Input::Move(Component::Y, None),
+            (ButtonState::Release, Key::D) => Input::Move(Component::X, None),
+            _ => return Err(game::InvalidKeyError),
+        })
+    }
 }
 
 pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
@@ -177,17 +198,9 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
                     ..
                 }) => {
                     let mut game = game.lock().unwrap();
-                    match state {
-                        ButtonState::Press => {
-                            if let Ok(_) = game.process_key_press(client_id, key) {
-                                inputs.unbounded_send(input.clone()).unwrap();
-                            }
-                        }
-                        ButtonState::Release => {
-                            if let Ok(_) = game.process_key_release(client_id, key) {
-                                inputs.unbounded_send(input.clone()).unwrap();
-                            }
-                        }
+                    if let Ok(input) = game::Input::try_from((state, key)) {
+                        game.process_input(client_id, input);
+                        inputs.unbounded_send(input).unwrap();
                     }
                 }
                 _ => {}
