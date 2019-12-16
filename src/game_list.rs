@@ -92,7 +92,7 @@ impl crate::GameRegistration for GameList {
             }
             impl<'a> Drop for UnregisterGame<'a> {
                 fn drop(&mut self) {
-                    info!("Unregistering game {}: {}", self.addr, self.name);
+                    info!("Unregistering game {}, \"{}\"", self.addr, self.name);
                     self.games.write().unwrap().remove(&self.addr);
                 }
             }
@@ -117,10 +117,9 @@ impl crate::GameRegistration for GameList {
                     return
                 }
             };
-            let mut every_5_secs = time::interval(Duration::from_secs(5));
             let mut successive_errors = 0;
             loop {
-                every_5_secs.tick().await;
+                time::delay_for(Duration::from_secs(5)).await;
                 match game_client.ping(context::current()).await {
                     Ok(()) => successive_errors = 0,
                     Err(e) => {

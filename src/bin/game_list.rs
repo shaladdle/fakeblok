@@ -1,10 +1,14 @@
 use clap::{App, Arg};
 use log::info;
-use std::{io, net::SocketAddr};
+use std::{env, io, net::SocketAddr};
 use tokio::runtime::Runtime;
 
 fn main() -> io::Result<()> {
-    pretty_env_logger::init();
+    let mut logger = pretty_env_logger::formatted_timed_builder();
+    if let Ok(filter) = env::var("RUST_LOG") {
+        logger.parse_filters(&filter);
+    }
+    logger.init();
 
     let flags = App::new("Fakeblok Listings")
         .version("0.1")

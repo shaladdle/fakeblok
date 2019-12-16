@@ -2,10 +2,14 @@ use clap::{App, Arg};
 use fakeblok::server::Server;
 use log::info;
 use pretty_env_logger;
-use std::{io, net::SocketAddr};
+use std::{env, io, net::SocketAddr};
 
 fn main() -> io::Result<()> {
-    pretty_env_logger::init();
+    let mut logger = pretty_env_logger::formatted_timed_builder();
+    if let Ok(filter) = env::var("RUST_LOG") {
+        logger.parse_filters(&filter);
+    }
+    logger.init();
 
     info!("Hello");
 
