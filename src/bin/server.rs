@@ -17,6 +17,9 @@ fn main() -> io::Result<()> {
         .arg(Arg::from_usage(
             "-p --port <number> Sets the port number to listen on",
         ))
+        .arg(Arg::from_usage(
+            "-n --name <string> Sets the name of the game",
+        ))
         .get_matches();
 
     let port = flags.value_of("port").unwrap();
@@ -25,7 +28,9 @@ fn main() -> io::Result<()> {
         .unwrap_or_else(|e| panic!(r#"--port value "{}" invalid: {}"#, port, e));
     let server_addr: SocketAddr = ([0, 0, 0, 0u8], port).into();
 
+    let name = flags.value_of("name").unwrap();
+
     info!("Starting game.");
-    Server::run_game(server_addr)?;
+    Server::run_game(server_addr, name.into())?;
     Ok(())
 }

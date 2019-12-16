@@ -31,7 +31,7 @@ pub enum Animation {
     },
     DisappearAfter {
         secs: f32,
-    }
+    },
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -314,7 +314,10 @@ pub enum Input {
 
 /// Component of a vector. Either x-component or y-component.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Component { X, Y }
+pub enum Component {
+    X,
+    Y,
+}
 
 impl Component {
     fn extract(self, point: &mut Point) -> &mut GameInt {
@@ -326,7 +329,10 @@ impl Component {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Sign { Positive, Negative }
+pub enum Sign {
+    Positive,
+    Negative,
+}
 
 fn magnitude_of(sign: Option<Sign>) -> GameInt {
     match sign {
@@ -503,7 +509,7 @@ impl Game {
                 self.insert_entity(Entity {
                     position: projectile,
                     velocity: self.velocities[id] * 3.,
-                    animation: Some(Animation::DisappearAfter{secs: 4.}),
+                    animation: Some(Animation::DisappearAfter { secs: 4. }),
                     moveable: true,
                     moved_this_action: false,
                     color,

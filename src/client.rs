@@ -2,7 +2,7 @@ use crate::game::{self, EntityId};
 use futures::{channel::mpsc, prelude::*};
 use log::{debug, error, info};
 use piston_window::{
-    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Key, Input,
+    clear, Button, ButtonArgs, ButtonState, Event, EventLoop, EventSettings, Events, Input, Key,
     Loop, OpenGL, PistonWindow, WindowSettings,
 };
 use std::{
@@ -123,15 +123,18 @@ async fn run_tasks(
             .run(),
         ),
         tokio::spawn(InputPusher { client, inputs }.run()),
-    ).await;
-    r1.and(r2).and(r3).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    )
+    .await;
+    r1.and(r2)
+        .and(r3)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
 impl TryFrom<(&ButtonState, &Key)> for game::Input {
     type Error = game::InvalidKeyError;
 
     fn try_from((state, key): (&ButtonState, &Key)) -> Result<game::Input, game::InvalidKeyError> {
-        use game::{Input, Component, Sign};
+        use game::{Component, Input, Sign};
         Ok(match (*state, *key) {
             (ButtonState::Press, Key::W) => Input::Move(Component::Y, Some(Sign::Negative)),
             (ButtonState::Press, Key::A) => Input::Move(Component::X, Some(Sign::Negative)),
@@ -165,13 +168,11 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     let client_id2 = client_id.clone();
 
     thread::spawn(move || {
-        Runtime::new()
-            .unwrap()
-            .block_on(async move {
-                if let Err(e) = run_tasks(server_addr, game2, client_id2, rx).await {
-                    error!("{}", e);
-                };
-            });
+        Runtime::new().unwrap().block_on(async move {
+            if let Err(e) = run_tasks(server_addr, game2, client_id2, rx).await {
+                error!("{}", e);
+            };
+        });
     });
 
     // Wait for game state to be initialized.

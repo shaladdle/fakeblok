@@ -7,9 +7,8 @@ use futures::{
     prelude::*,
 };
 use log::{debug, error, info};
-use piston_window::{
-    Event, EventLoop, EventSettings, Events, Loop, NoWindow, WindowSettings,
-};
+use once_cell::sync::OnceCell;
+use piston_window::{Event, EventLoop, EventSettings, Events, Loop, NoWindow, WindowSettings};
 use std::{
     io,
     net::SocketAddr,
@@ -33,13 +32,16 @@ pub struct Server {
 
 struct Disconnect {
     game: Arc<Mutex<game::Game>>,
-    client_id: EntityId,
+    peer_addr: SocketAddr,
+    client_id: Arc<OnceCell<EntityId>>,
 }
 
 impl Drop for Disconnect {
     fn drop(&mut self) {
-        info!("Player {} has disconnected.", self.client_id);
-        self.game.lock().unwrap().remove_entity(self.client_id);
+        info!("Player {} has disconnected.", self.peer_addr);
+        if let Some(id) = self.client_id.get() {
+            self.game.lock().unwrap().remove_entity(*id);
+        }
     }
 }
 
@@ -48,38 +50,38 @@ impl Server {
         Server { game, game_rx }
     }
 
-    pub fn new_handler(&self, entity_id: EntityId) -> ConnectionHandler {
+    pub fn new_handler(&self) -> ConnectionHandler {
         ConnectionHandler {
-            entity_id,
+            entity_id: Arc::new(OnceCell::new()),
             game: self.game.clone(),
             game_rx: self.game_rx.clone(),
         }
     }
 
-    async fn run(&mut self, server_addr: SocketAddr) -> io::Result<()> {
-        tarpc::serde_transport::tcp::listen(&server_addr, Json::default)
-            .await?
+    async fn run(&mut self, server_addr: SocketAddr, name: String) -> io::Result<()> {
+        let listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
+        let registration = tarpc::serde_transport::tcp::connect("0.0.0.0:23304", Json::default())
+            .await?;
+        let mut registration = crate::GameRegistrationClient::new(
+            tarpc::client::Config::default(), registration).spawn()?;
+        registration.register(context::current(), server_addr.port(), name).await?;
+        listener
             // Ignore accept errors.
             .filter_map(|r| future::ready(r.ok()))
             .map(server::BaseChannel::with_defaults)
             .map(move |channel| {
                 info!("Cloning server");
                 let game = self.game.clone();
-                let entity_id = {
-                    let mut game = game.lock().unwrap();
-                    game.insert_new_player_square()
-                };
-                let mut handler = self.new_handler(entity_id);
-                info!("Handler for player with entity id {} created", entity_id);
+                let handler = self.new_handler();
                 async move {
-                    // Wait until the game state contains the new player.
-                    while !handler.game_rx.recv().await.unwrap().positions.contains(entity_id) {}
+                    let peer = channel.get_ref().peer_addr()?;
+                    info!("Handler for player {} created", peer);
 
-                    info!("Creating response future");
                     // When this future is dropped, the player will be disconnected.
                     let _disconnect = Disconnect {
                         game,
-                        client_id: entity_id,
+                        client_id: handler.entity_id.clone(),
+                        peer_addr: peer,
                     };
                     let mut response_stream = channel.respond_with(handler.serve());
                     while let Some(handler) = response_stream.next().await {
@@ -97,7 +99,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn run_game(server_addr: SocketAddr) -> io::Result<()> {
+    pub fn run_game(server_addr: SocketAddr, name: String) -> io::Result<()> {
         let game = game::Game::new(Point::new(10_000., 500.), 50.);
         let (game_tx, game_rx) = watch::channel(game.clone());
         let game = Arc::new(Mutex::new(game));
@@ -105,14 +107,12 @@ impl Server {
 
         std::thread::spawn(move || {
             info!("Starting server.");
-            Runtime::new()
-                .unwrap()
-                .block_on(async move {
-                    match server.run(server_addr).await {
-                        Err(err) => error!("Server died: {:?}", err),
-                        Ok(()) => info!("Server done."),
-                    }
-                });
+            Runtime::new().unwrap().block_on(async move {
+                match server.run(server_addr, name).await {
+                    Err(err) => error!("Server died: {:?}", err),
+                    Ok(()) => info!("Server done."),
+                }
+            });
         });
 
         let mut window: NoWindow = WindowSettings::new("shapes", [0; 2]).build().unwrap();
@@ -158,44 +158,54 @@ impl Server {
 
 #[derive(Clone)]
 pub struct ConnectionHandler {
-    entity_id: EntityId,
+    entity_id: Arc<OnceCell<EntityId>>,
     game: Arc<Mutex<game::Game>>,
     game_rx: watch::Receiver<game::Game>,
 }
 
 impl crate::Game for ConnectionHandler {
+    type PingFut = Ready<()>;
+    fn ping(self, _: context::Context) -> Ready<()> {
+        future::ready(())
+    }
+
     type GetEntityIdFut = Ready<EntityId>;
 
     fn get_entity_id(self, _: context::Context) -> Self::GetEntityIdFut {
-        future::ready(self.entity_id)
+        future::ready(self.get_or_make_entity_id())
     }
 
-    type PushInputFut = Ready<()>;
+    type PushInputFut = Pin<Box<dyn Future<Output = ()>>>;
 
     fn push_input(self, _: context::Context, input: game::Input) -> Self::PushInputFut {
         debug!("push_input({:?})", input);
-        self.game.lock().unwrap().process_input(self.entity_id, input);
-        future::ready(())
+        Box::pin(async move {
+            self.game
+                .lock()
+                .unwrap()
+                .process_input(self.get_or_make_entity_id(), input)
+        })
     }
 
     type PollGameStateFut = Pin<Box<dyn Future<Output = game::Game>>>;
 
     fn poll_game_state(mut self, _: context::Context) -> Self::PollGameStateFut {
-        const FIVE_MILLIS: Duration = Duration::from_millis(5);
         Box::pin(async move {
-            let now = Instant::now();
-            let result = self.game_rx.recv().await.unwrap();
-            let elapsed = now.elapsed();
-            if elapsed > FIVE_MILLIS {
-                info!("poll_game_state() took {:?}", elapsed);
+            loop {
+                let game = self.game_rx.recv().await.unwrap();
+                if game.positions.contains(self.get_or_make_entity_id()) {
+                    return game;
+                }
             }
-            result
         })
     }
 }
 
 impl ConnectionHandler {
-    pub fn entity_id(&self) -> EntityId {
-        self.entity_id
+    fn get_or_make_entity_id(&self) -> EntityId {
+        *self.entity_id.get_or_init(|| {
+            let mut game = self.game.lock().unwrap();
+            game.insert_new_player_square()
+        })
     }
 }
