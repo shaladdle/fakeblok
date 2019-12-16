@@ -5,8 +5,9 @@ use futures::{
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map},
     io,
+    mem,
     net::SocketAddr,
     sync::{Arc, RwLock},
     time::Duration,
@@ -22,6 +23,7 @@ use tokio::time;
 struct GameData {
     name: String,
     abort_health_check: AbortHandle,
+    version: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -84,20 +86,46 @@ impl crate::GameRegistration for GameList {
         game_addr.set_port(port);
         let games = self.games.clone();
         let name2 = name.clone();
-        let (health_check, abort_health_check) = future::abortable(async move {
+        let (abort_health_check, abort_registration) = future::AbortHandle::new_pair();
+        let (previous_game, version) = match self.games.write().unwrap().entry(game_addr) {
+            hash_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().abort_health_check.abort();
+                entry.get_mut().abort_health_check = abort_health_check;
+                let previous_game_name = mem::replace(&mut entry.get_mut().name, name2);
+                entry.get_mut().version += 1;
+                (Some(previous_game_name), entry.get().version)
+            }
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(GameData {
+                    version: 0,
+                    name: name2,
+                    abort_health_check,
+                });
+                (None, 0)
+            }
+        };
+        let health_check = future::Abortable::new(async move {
             struct UnregisterGame<'a> {
                 addr: SocketAddr,
                 name: &'a str,
                 games: Arc<RwLock<HashMap<SocketAddr, GameData>>>,
+                version: u32,
             }
             impl<'a> Drop for UnregisterGame<'a> {
                 fn drop(&mut self) {
-                    info!("Unregistering game {}, \"{}\"", self.addr, self.name);
-                    self.games.write().unwrap().remove(&self.addr);
+                    if let hash_map::Entry::Occupied(entry) = self.games.write().unwrap().entry(self.addr) {
+                        if entry.get().version == self.version {
+                            info!("Unregistering game {} v{}, \"{}\"", self.addr, self.version, self.name);
+                            entry.remove();
+                        } else {
+                            info!("Game {} version is different (v{} != v{}); not unregistering",
+                            self.addr, entry.get().version, self.version);
+                        }
+                    }
                 }
             }
             let _unregister = UnregisterGame {
-                addr: game_addr, games: games, name: &name,
+                addr: game_addr, games: games, name: &name, version,
             };
             let transport = match tarpc::serde_transport::tcp::connect(
                 &game_addr, Json::default()).await
@@ -134,15 +162,7 @@ impl crate::GameRegistration for GameList {
                     }
                 }
             }
-        });
-        let previous_game = self.games.write().unwrap().insert(game_addr, GameData {
-            name: name2,
-            abort_health_check,
-        });
-        let previous_game = previous_game.map(|data| {
-            data.abort_health_check.abort();
-            data.name
-        });
+        }, abort_registration);
         tokio::spawn(health_check);
         future::ready(previous_game)
     }
