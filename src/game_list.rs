@@ -125,7 +125,7 @@ impl crate::GameRegistration for GameList {
                 }
             }
             let _unregister = UnregisterGame {
-                addr: game_addr, games: games, name: &name, version,
+                addr: game_addr, name: &name, games, version,
             };
             let transport = match tarpc::serde_transport::tcp::connect(
                 &game_addr, Json::default()).await

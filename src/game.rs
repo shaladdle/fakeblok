@@ -575,8 +575,7 @@ impl Game {
         let pov_width = self.positions[pov_id].width;
         let pov_height = self.positions[pov_id].height;
         let [x, y] = c.get_view_size();
-        for (i, entity) in self.positions.iter() {
-            let mut entity = entity.clone();
+        for (i, &(mut entity)) in self.positions.iter() {
             entity.top_left.x = (entity.top_left.x + self.width() + 0.5 as GameInt * x as GameInt
                 - pov.x
                 - pov_width / 2.)

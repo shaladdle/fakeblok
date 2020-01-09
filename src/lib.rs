@@ -10,7 +10,7 @@ pub trait Game {
     async fn ping();
     async fn get_entity_id() -> game::EntityId;
     async fn push_input(input: game::Input);
-    async fn poll_game_state() -> game::Game;
+    async fn poll_game_state() -> Box<game::Game>;
 }
 
 #[tarpc::service]

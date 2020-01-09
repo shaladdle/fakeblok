@@ -123,32 +123,29 @@ impl Server {
         info!("start!");
 
         while let Some(event) = events.next(&mut window) {
-            match event {
-                Event::Loop(ref lp) => {
-                    let now = Instant::now();
+            if let Event::Loop(ref lp) = event {
+                let now = Instant::now();
 
-                    let mut game = game.lock().unwrap();
-                    match lp {
-                        Loop::Idle(_) => {}
-                        Loop::Update(args) => {
-                            game.tick(
-                                args.dt as f32,
-                                &mut time_in_current_bucket,
-                                &mut ticks_in_current_bucket,
-                            );
-                        }
-                        lp => panic!("Didn't expect {:?}", lp),
+                let mut game = game.lock().unwrap();
+                match lp {
+                    Loop::Idle(_) => {}
+                    Loop::Update(args) => {
+                        game.tick(
+                            args.dt as f32,
+                            &mut time_in_current_bucket,
+                            &mut ticks_in_current_bucket,
+                        );
                     }
-                    let game = game.clone();
-                    game_tx.broadcast(game).unwrap();
-
-                    let elapsed = now.elapsed();
-                    const TWO_MILLIS: Duration = Duration::from_millis(2);
-                    if elapsed > TWO_MILLIS {
-                        info!("one game loop took {:?}", elapsed);
-                    }
+                    lp => panic!("Didn't expect {:?}", lp),
                 }
-                _ => {}
+                let game = game.clone();
+                game_tx.broadcast(game).unwrap();
+
+                let elapsed = now.elapsed();
+                const TWO_MILLIS: Duration = Duration::from_millis(2);
+                if elapsed > TWO_MILLIS {
+                    info!("one game loop took {:?}", elapsed);
+                }
             }
         }
         info!("end :(");
@@ -187,14 +184,14 @@ impl crate::Game for ConnectionHandler {
         })
     }
 
-    type PollGameStateFut = Pin<Box<dyn Future<Output = game::Game>>>;
+    type PollGameStateFut = Pin<Box<dyn Future<Output = Box<game::Game>>>>;
 
     fn poll_game_state(mut self, _: context::Context) -> Self::PollGameStateFut {
         Box::pin(async move {
             loop {
                 let game = self.game_rx.recv().await.unwrap();
                 if game.positions.contains(self.get_or_make_entity_id()) {
-                    return game;
+                    return Box::new(game);
                 }
             }
         })

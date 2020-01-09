@@ -45,7 +45,7 @@ impl InputPusher {
 /// Also is responsible for waking the main thread after the first poll.
 struct StatePoller {
     client: crate::GameClient,
-    game: Arc<Mutex<game::Game>>,
+    game: Arc<Mutex<Box<game::Game>>>,
     client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
 }
 
@@ -107,7 +107,7 @@ async fn create_client(
 
 async fn run_tasks(
     server_addr: SocketAddr,
-    game: Arc<Mutex<game::Game>>,
+    game: Arc<Mutex<Box<game::Game>>>,
     client_id: Arc<(Mutex<Option<EntityId>>, Condvar)>,
     inputs: mpsc::UnboundedReceiver<game::Input>,
 ) -> io::Result<()> {
@@ -160,7 +160,7 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
     window.set_lazy(true);
 
     info!("Connecting to server");
-    let game = Arc::new(Mutex::new(game::Game::default()));
+    let game = Arc::new(Mutex::new(Box::new(game::Game::default())));
     let client_id = Arc::new((Mutex::new(None), Condvar::new()));
     let (inputs, rx) = mpsc::unbounded();
 
@@ -192,20 +192,17 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
 
     while let Some(event) = events.next(&mut window) {
         match event {
-            Event::Input(ref input, _) => match input {
-                Input::Button(ButtonArgs {
+            Event::Input(ref input, _) => if let Input::Button(ButtonArgs {
                     button: Button::Keyboard(key),
                     state,
                     ..
-                }) => {
-                    let mut game = game.lock().unwrap();
-                    if let Ok(input) = game::Input::try_from((state, key)) {
-                        game.process_input(client_id, input);
-                        inputs.unbounded_send(input).unwrap();
-                    }
+                }) = input {
+                let mut game = game.lock().unwrap();
+                if let Ok(input) = game::Input::try_from((state, key)) {
+                    game.process_input(client_id, input);
+                    inputs.unbounded_send(input).unwrap();
                 }
-                _ => {}
-            },
+            }
             Event::Loop(Loop::Render(args)) => {
                 if resolution != args.window_size {
                     info!("Resizing {:?} => {:?}", resolution, args.window_size);
