@@ -34,7 +34,7 @@ pub enum Animation {
     },
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Point {
     pub x: GameInt,
     pub y: GameInt,
@@ -604,7 +604,7 @@ impl Game {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Rectangle {
     pub top_left: Point,
     pub width: GameInt,
@@ -709,16 +709,10 @@ fn my_rectangle_segments_no_overflow() {
         width: 5.,
         height: 5.,
     };
-    let mut expected_recs = vec![Rectangle::new(Point::new(5., 5.), 5., 5.)];
-    rect.segments(Point { x: 10., y: 10. }, |r| {
-        for (i, rec) in expected_recs.iter() {
-            if rec == &r {
-                expected_recs.remove(i);
-                return;
-            }
-        }
-        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
-    });
+    let expected_recs = vec![Rectangle::new(Point::new(5., 5.), 5., 5.)];
+    let mut actual_recs = vec![];
+    rect.segments(Point { x: 10., y: 10. }, |r| actual_recs.push(r));
+    assert_eq!(expected_recs, actual_recs);
 }
 
 #[test]
@@ -728,19 +722,14 @@ fn my_rectangle_segments_overflow() {
         width: 5.,
         height: 5.,
     };
-    let mut expected_recs = vec![
-        Rectangle::new(Point::new(5., 5.), 2., 5.),
+    let expected_recs = vec![
         Rectangle::new(Point::new(0., 5.), 3., 5.),
+        Rectangle::new(Point::new(5., 5.), 2., 5.),
     ];
-    rect.segments(Point { x: 7., y: 10. }, |r| {
-        for (i, rec) in expected_recs.iter() {
-            if rec == &r {
-                expected_recs.remove(i);
-                return;
-            }
-        }
-        panic!("Expected one of {:?}; got {:?}", expected_recs, r);
-    });
+    let mut actual_recs = vec![];
+    rect.segments(Point { x: 7., y: 10. }, |r| actual_recs.push(r));
+    actual_recs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(expected_recs, actual_recs);
 }
 
 #[test]
