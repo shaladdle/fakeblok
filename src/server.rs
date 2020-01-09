@@ -60,11 +60,14 @@ impl Server {
 
     async fn run(&mut self, server_addr: SocketAddr, name: String) -> io::Result<()> {
         let listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
-        let registration = tarpc::serde_transport::tcp::connect("0.0.0.0:23304", Json::default())
+        let registration =
+            tarpc::serde_transport::tcp::connect("0.0.0.0:23304", Json::default()).await?;
+        let mut registration =
+            crate::GameRegistrationClient::new(tarpc::client::Config::default(), registration)
+                .spawn()?;
+        registration
+            .register(context::current(), server_addr.port(), name)
             .await?;
-        let mut registration = crate::GameRegistrationClient::new(
-            tarpc::client::Config::default(), registration).spawn()?;
-        registration.register(context::current(), server_addr.port(), name).await?;
         listener
             // Ignore accept errors.
             .filter_map(|r| future::ready(r.ok()))

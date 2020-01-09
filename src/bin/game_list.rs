@@ -36,7 +36,10 @@ fn main() -> io::Result<()> {
     let list_addr: SocketAddr = ([0, 0, 0, 0u8], list_port).into();
 
     info!("Starting game list server.");
-    Runtime::new().unwrap().block_on(
-        fakeblok::game_list::GameList::run(registration_addr, list_addr)
-    )
+    Runtime::new()
+        .unwrap()
+        .block_on(fakeblok::game_list::GameList::run(
+            registration_addr,
+            list_addr,
+        ))
 }

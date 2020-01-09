@@ -21,16 +21,19 @@ fn main() -> io::Result<()> {
         .parse()
         .unwrap_or_else(|e| panic!(r#"--server_addr value "{}" invalid: {}"#, server_addr, e));
 
-    tokio::runtime::Runtime::new().unwrap().block_on(async move {
-        let mut client = create_client(server_addr).await.unwrap();
-        println!("Available games: {:?}", client.list(tarpc::context::current()).await.unwrap());
-    });
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async move {
+            let mut client = create_client(server_addr).await.unwrap();
+            println!(
+                "Available games: {:?}",
+                client.list(tarpc::context::current()).await.unwrap()
+            );
+        });
     Ok(())
 }
 
-async fn create_client(
-    server_addr: SocketAddr,
-) -> io::Result<fakeblok::GamesClient> {
+async fn create_client(server_addr: SocketAddr) -> io::Result<fakeblok::GamesClient> {
     info!("Creating client to {}", server_addr);
     let transport = tarpc::serde_transport::tcp::connect(&server_addr, Json::default()).await?;
     fakeblok::GamesClient::new(tarpc::client::Config::default(), transport).spawn()

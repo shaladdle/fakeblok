@@ -1,13 +1,12 @@
 use futures::{
-    future::{self, Ready, AbortHandle},
+    future::{self, AbortHandle, Ready},
     prelude::*,
 };
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, hash_map},
-    io,
-    mem,
+    collections::{hash_map, HashMap},
+    io, mem,
     net::SocketAddr,
     sync::{Arc, RwLock},
     time::Duration,
@@ -16,8 +15,8 @@ use tarpc::{
     context,
     server::{self, Channel},
 };
-use tokio_serde::formats::Json;
 use tokio::time;
+use tokio_serde::formats::Json;
 
 #[derive(Debug)]
 struct GameData {
@@ -33,13 +32,14 @@ pub struct GameList {
 }
 
 impl GameList {
-    pub async fn run(
-        registration_addr: SocketAddr,
-        game_list_addr: SocketAddr,
-    ) -> io::Result<()> {
+    pub async fn run(registration_addr: SocketAddr, game_list_addr: SocketAddr) -> io::Result<()> {
         let games = Arc::new(RwLock::new(HashMap::new()));
         let (r1, r2) = future::join(
-            Self::run_server(registration_addr, games.clone(), crate::GameRegistration::serve),
+            Self::run_server(
+                registration_addr,
+                games.clone(),
+                crate::GameRegistration::serve,
+            ),
             Self::run_server(game_list_addr, games, crate::Games::serve),
         )
         .await;
@@ -49,12 +49,13 @@ impl GameList {
     async fn run_server<Req, Resp, Serve>(
         server_addr: SocketAddr,
         games: Arc<RwLock<HashMap<SocketAddr, GameData>>>,
-        serve: impl FnMut(GameList) -> Serve + Clone
-    ) -> io::Result<()> 
-    where Serve: tarpc::server::Serve<Req, Resp=Resp> + Send + 'static,
-          Req: for<'a> Deserialize<'a> + Send + 'static + Unpin,
-          Resp: Serialize + Send + 'static + Unpin,
-          Serve::Fut: Send + 'static,
+        serve: impl FnMut(GameList) -> Serve + Clone,
+    ) -> io::Result<()>
+    where
+        Serve: tarpc::server::Serve<Req, Resp = Resp> + Send + 'static,
+        Req: for<'a> Deserialize<'a> + Send + 'static + Unpin,
+        Resp: Serialize + Send + 'static + Unpin,
+        Serve::Fut: Send + 'static,
     {
         tarpc::serde_transport::tcp::listen(&server_addr, Json::default)
             .await?
@@ -65,7 +66,10 @@ impl GameList {
                 let games = games.clone();
                 let mut serve = serve.clone();
                 async move {
-                    let server = GameList { peer: channel.get_ref().peer_addr()?, games };
+                    let server = GameList {
+                        peer: channel.get_ref().peer_addr()?,
+                        games,
+                    };
                     channel.respond_with(serve(server)).execute().await;
                     Ok::<_, io::Error>(())
                 }
@@ -104,65 +108,86 @@ impl crate::GameRegistration for GameList {
                 (None, 0)
             }
         };
-        let health_check = future::Abortable::new(async move {
-            struct UnregisterGame<'a> {
-                addr: SocketAddr,
-                name: &'a str,
-                games: Arc<RwLock<HashMap<SocketAddr, GameData>>>,
-                version: u32,
-            }
-            impl<'a> Drop for UnregisterGame<'a> {
-                fn drop(&mut self) {
-                    if let hash_map::Entry::Occupied(entry) = self.games.write().unwrap().entry(self.addr) {
-                        if entry.get().version == self.version {
-                            info!("Unregistering game {} v{}, \"{}\"", self.addr, self.version, self.name);
-                            entry.remove();
-                        } else {
-                            info!("Game {} version is different (v{} != v{}); not unregistering",
-                            self.addr, entry.get().version, self.version);
+        let health_check = future::Abortable::new(
+            async move {
+                struct UnregisterGame<'a> {
+                    addr: SocketAddr,
+                    name: &'a str,
+                    games: Arc<RwLock<HashMap<SocketAddr, GameData>>>,
+                    version: u32,
+                }
+                impl<'a> Drop for UnregisterGame<'a> {
+                    fn drop(&mut self) {
+                        if let hash_map::Entry::Occupied(entry) =
+                            self.games.write().unwrap().entry(self.addr)
+                        {
+                            if entry.get().version == self.version {
+                                info!(
+                                    "Unregistering game {} v{}, \"{}\"",
+                                    self.addr, self.version, self.name
+                                );
+                                entry.remove();
+                            } else {
+                                info!(
+                                    "Game {} version is different (v{} != v{}); not unregistering",
+                                    self.addr,
+                                    entry.get().version,
+                                    self.version
+                                );
+                            }
                         }
                     }
                 }
-            }
-            let _unregister = UnregisterGame {
-                addr: game_addr, name: &name, games, version,
-            };
-            let transport = match tarpc::serde_transport::tcp::connect(
-                &game_addr, Json::default()).await
-            {
-                Ok(transport) => transport,
-                Err(e) => {
-                    warn!("Failed to connect to game {}, \"{}\": {}", game_addr, name, e);
-                    return
-                }
-            };
-            let mut game_client = match crate::GameClient::new(
-                tarpc::client::Config::default(), transport).spawn()
-            {
-                Ok(game_client) => game_client,
-                Err(e) => {
-                    error!("Failed to start client for game {}, \"{}\": {}", game_addr, name, e);
-                    return
-                }
-            };
-            let mut successive_errors = 0;
-            loop {
-                time::delay_for(Duration::from_secs(5)).await;
-                match game_client.ping(context::current()).await {
-                    Ok(()) => successive_errors = 0,
-                    Err(e) => {
-                        info!("Unresponsive game {}, \"{}\": {}", game_addr, name, e);
-                        if e.kind() == io::ErrorKind::ConnectionReset {
+                let _unregister = UnregisterGame {
+                    addr: game_addr,
+                    name: &name,
+                    games,
+                    version,
+                };
+                let transport =
+                    match tarpc::serde_transport::tcp::connect(&game_addr, Json::default()).await {
+                        Ok(transport) => transport,
+                        Err(e) => {
+                            warn!(
+                                "Failed to connect to game {}, \"{}\": {}",
+                                game_addr, name, e
+                            );
                             return;
                         }
-                        successive_errors += 1;
-                        if successive_errors >= 3 {
-                            return
+                    };
+                let mut game_client =
+                    match crate::GameClient::new(tarpc::client::Config::default(), transport)
+                        .spawn()
+                    {
+                        Ok(game_client) => game_client,
+                        Err(e) => {
+                            error!(
+                                "Failed to start client for game {}, \"{}\": {}",
+                                game_addr, name, e
+                            );
+                            return;
+                        }
+                    };
+                let mut successive_errors = 0;
+                loop {
+                    time::delay_for(Duration::from_secs(5)).await;
+                    match game_client.ping(context::current()).await {
+                        Ok(()) => successive_errors = 0,
+                        Err(e) => {
+                            info!("Unresponsive game {}, \"{}\": {}", game_addr, name, e);
+                            if e.kind() == io::ErrorKind::ConnectionReset {
+                                return;
+                            }
+                            successive_errors += 1;
+                            if successive_errors >= 3 {
+                                return;
+                            }
                         }
                     }
                 }
-            }
-        }, abort_registration);
+            },
+            abort_registration,
+        );
         tokio::spawn(health_check);
         future::ready(previous_game)
     }
@@ -183,6 +208,13 @@ impl crate::Games for GameList {
     type ListFut = Ready<HashMap<SocketAddr, String>>;
 
     fn list(self, _: context::Context) -> Ready<HashMap<SocketAddr, String>> {
-        future::ready(self.games.read().unwrap().iter().map(|(addr, data)| (*addr, data.name.clone())).collect())
+        future::ready(
+            self.games
+                .read()
+                .unwrap()
+                .iter()
+                .map(|(addr, data)| (*addr, data.name.clone()))
+                .collect(),
+        )
     }
 }
