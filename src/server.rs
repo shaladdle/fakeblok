@@ -2,17 +2,13 @@ use crate::{
     game::{self, EntityId, Point},
     Game as _,
 };
-use futures::{
-    future::{self, Ready},
-    prelude::*,
-};
+use futures::prelude::*;
 use log::{debug, error, info};
 use once_cell::sync::OnceCell;
 use piston_window::{Event, EventLoop, EventSettings, Events, Loop, NoWindow, WindowSettings};
 use std::{
     io,
     net::SocketAddr,
-    pin::Pin,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -62,7 +58,7 @@ impl Server {
         let listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
         let registration =
             tarpc::serde_transport::tcp::connect("0.0.0.0:23304", Json::default()).await?;
-        let mut registration =
+        let registration =
             crate::GameRegistrationClient::new(tarpc::client::Config::default(), registration)
                 .spawn()?;
         registration
@@ -86,11 +82,13 @@ impl Server {
                         client_id: handler.entity_id.clone(),
                         peer_addr: peer,
                     };
-                    let mut response_stream = channel.respond_with(handler.serve());
-                    while let Some(handler) = response_stream.next().await {
+
+                    let mut handler = handler.serve();
+                    let mut response_stream = channel.requests();
+                    while let Some(response) = response_stream.next().await {
                         // No need to do response handling concurrently, because these futures are
                         // very short-lived.
-                        handler?.await;
+                        response?.execute(&mut handler).await;
                     }
                     Ok::<_, io::Error>(())
                 }
@@ -163,41 +161,29 @@ pub struct ConnectionHandler {
     game_rx: watch::Receiver<game::Game>,
 }
 
+#[tarpc::server]
 impl crate::Game for ConnectionHandler {
-    type PingFut = Ready<()>;
-    fn ping(self, _: context::Context) -> Ready<()> {
-        future::ready(())
+    async fn ping(&mut self, _: &mut context::Context) {}
+
+    async fn get_entity_id(&mut self, _: &mut context::Context) -> game::EntityId {
+        self.get_or_make_entity_id()
     }
 
-    type GetEntityIdFut = Ready<EntityId>;
-
-    fn get_entity_id(self, _: context::Context) -> Self::GetEntityIdFut {
-        future::ready(self.get_or_make_entity_id())
-    }
-
-    type PushInputFut = Pin<Box<dyn Future<Output = ()>>>;
-
-    fn push_input(self, _: context::Context, input: game::Input) -> Self::PushInputFut {
+    async fn push_input(&mut self, _: &mut context::Context, input: game::Input) {
         debug!("push_input({:?})", input);
-        Box::pin(async move {
-            self.game
-                .lock()
-                .unwrap()
-                .process_input(self.get_or_make_entity_id(), input)
-        })
+        self.game
+            .lock()
+            .unwrap()
+            .process_input(self.get_or_make_entity_id(), input)
     }
 
-    type PollGameStateFut = Pin<Box<dyn Future<Output = Box<game::Game>>>>;
-
-    fn poll_game_state(mut self, _: context::Context) -> Self::PollGameStateFut {
-        Box::pin(async move {
-            loop {
-                let game = self.game_rx.recv().await.unwrap();
-                if game.positions.contains(self.get_or_make_entity_id()) {
-                    return Box::new(game);
-                }
+    async fn poll_game_state(&mut self, _: &mut context::Context) -> Box<game::Game> {
+        loop {
+            let game = self.game_rx.recv().await.unwrap();
+            if game.positions.contains(self.get_or_make_entity_id()) {
+                return Box::new(game);
             }
-        })
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use std::{
     net::SocketAddr,
     sync::{Arc, Condvar, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tarpc::client::{self, NewClient};
 use tarpc::context;
@@ -26,15 +26,17 @@ struct InputPusher {
     inputs: mpsc::UnboundedReceiver<game::Input>,
 }
 
+fn new_context() -> context::Context {
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now() + Duration::from_millis(150);
+    ctx
+}
+
 impl InputPusher {
     async fn run(mut self) {
         while let Some(input) = self.inputs.next().await {
             debug!("push_input({:?})", input);
-            if let Err(err) = self
-                .client
-                .push_input(context::current(), input.clone())
-                .await
-            {
+            if let Err(err) = self.client.push_input(new_context(), input.clone()).await {
                 error!("Error setting keys, {:?}: {:?}", input, err);
             }
         }
@@ -50,11 +52,9 @@ struct StatePoller {
 }
 
 impl StatePoller {
-    async fn run(mut self) {
-        let mut client1 = self.client.clone();
-        let mut client2 = self.client.clone();
-        let game_state = client1.poll_game_state(context::current());
-        let client_id = client2.get_entity_id(context::current());
+    async fn run(self) {
+        let game_state = self.client.poll_game_state(context::current());
+        let client_id = self.client.get_entity_id(context::current());
 
         info!("Getting initial game state:");
         match future::join(game_state, client_id).await {
@@ -76,7 +76,7 @@ impl StatePoller {
         loop {
             let now = Instant::now();
 
-            match self.client.poll_game_state(context::current()).await {
+            match self.client.poll_game_state(new_context()).await {
                 Ok(new_game) => *self.game.lock().unwrap() = new_game,
                 Err(e) => {
                     error!("Failed to poll game state: {}", e);

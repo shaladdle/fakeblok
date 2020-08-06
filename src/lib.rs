@@ -1,3 +1,6 @@
+#![allow(incomplete_features)]
+#![feature(generic_associated_types, type_alias_impl_trait)]
+
 use std::{collections::HashMap, net::SocketAddr};
 
 pub mod client;

@@ -24,7 +24,7 @@ fn main() -> io::Result<()> {
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async move {
-            let mut client = create_client(server_addr).await.unwrap();
+            let client = create_client(server_addr).await.unwrap();
             println!(
                 "Available games: {:?}",
                 client.list(tarpc::context::current()).await.unwrap()

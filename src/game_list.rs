@@ -1,5 +1,5 @@
 use futures::{
-    future::{self, AbortHandle, Ready},
+    future::{self, AbortHandle},
     prelude::*,
 };
 use log::{error, info, warn};
@@ -31,6 +31,11 @@ pub struct GameList {
     games: Arc<RwLock<HashMap<SocketAddr, GameData>>>,
 }
 
+mod markers {
+    pub trait Send<'a>: std::marker::Send {}
+    impl<'a, T: std::marker::Send> Send<'a> for T {}
+}
+
 impl GameList {
     pub async fn run(registration_addr: SocketAddr, game_list_addr: SocketAddr) -> io::Result<()> {
         let games = Arc::new(RwLock::new(HashMap::new()));
@@ -52,10 +57,10 @@ impl GameList {
         serve: impl FnMut(GameList) -> Serve + Clone,
     ) -> io::Result<()>
     where
-        Serve: tarpc::server::Serve<Req, Resp = Resp> + Send + 'static,
+        Serve: tarpc::server::Serve<Req, Resp = Resp> + Clone + Send + Sync + 'static,
         Req: for<'a> Deserialize<'a> + Send + 'static + Unpin,
         Resp: Serialize + Send + 'static + Unpin,
-        Serve::Fut: Send + 'static,
+        for<'a> Serve::Fut<'a>: markers::Send<'a>,
     {
         tarpc::serde_transport::tcp::listen(&server_addr, Json::default)
             .await?
@@ -70,7 +75,7 @@ impl GameList {
                         peer: channel.get_ref().peer_addr()?,
                         games,
                     };
-                    channel.respond_with(serve(server)).execute().await;
+                    channel.execute(serve(server)).await;
                     Ok::<_, io::Error>(())
                 }
             })
@@ -82,10 +87,14 @@ impl GameList {
     }
 }
 
+#[tarpc::server]
 impl crate::GameRegistration for GameList {
-    type RegisterFut = Ready<Option<String>>;
-
-    fn register(self, _: context::Context, port: u16, name: String) -> Ready<Option<String>> {
+    async fn register(
+        &mut self,
+        _: &mut context::Context,
+        port: u16,
+        name: String,
+    ) -> Option<String> {
         let mut game_addr = self.peer;
         game_addr.set_port(port);
         let games = self.games.clone();
@@ -155,7 +164,7 @@ impl crate::GameRegistration for GameList {
                             return;
                         }
                     };
-                let mut game_client =
+                let game_client =
                     match crate::GameClient::new(tarpc::client::Config::default(), transport)
                         .spawn()
                     {
@@ -189,32 +198,27 @@ impl crate::GameRegistration for GameList {
             abort_registration,
         );
         tokio::spawn(health_check);
-        future::ready(previous_game)
+        previous_game
     }
 
-    type UnregisterFut = Ready<Option<String>>;
-
-    fn unregister(self, _: context::Context, port: u16) -> Ready<Option<String>> {
+    async fn unregister(&mut self, _: &mut context::Context, port: u16) -> Option<String> {
         let mut game_addr = self.peer;
         game_addr.set_port(port);
-        future::ready(self.games.write().unwrap().remove(&game_addr).map(|data| {
+        self.games.write().unwrap().remove(&game_addr).map(|data| {
             data.abort_health_check.abort();
             data.name
-        }))
+        })
     }
 }
 
+#[tarpc::server]
 impl crate::Games for GameList {
-    type ListFut = Ready<HashMap<SocketAddr, String>>;
-
-    fn list(self, _: context::Context) -> Ready<HashMap<SocketAddr, String>> {
-        future::ready(
-            self.games
-                .read()
-                .unwrap()
-                .iter()
-                .map(|(addr, data)| (*addr, data.name.clone()))
-                .collect(),
-        )
+    async fn list(&mut self, _: &mut context::Context) -> HashMap<SocketAddr, String> {
+        self.games
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(addr, data)| (*addr, data.name.clone()))
+            .collect()
     }
 }
