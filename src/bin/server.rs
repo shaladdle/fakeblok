@@ -1,7 +1,6 @@
 use clap::{App, Arg};
 use fakeblok::server::Server;
 use log::info;
-use pretty_env_logger;
 use std::{env, io, net::SocketAddr};
 
 fn main() -> io::Result<()> {

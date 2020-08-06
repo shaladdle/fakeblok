@@ -36,7 +36,7 @@ impl InputPusher {
     async fn run(mut self) {
         while let Some(input) = self.inputs.next().await {
             debug!("push_input({:?})", input);
-            if let Err(err) = self.client.push_input(new_context(), input.clone()).await {
+            if let Err(err) = self.client.push_input(new_context(), input).await {
                 error!("Error setting keys, {:?}: {:?}", input, err);
             }
         }
@@ -207,7 +207,14 @@ pub fn run_ui(server_addr: SocketAddr) -> io::Result<()> {
                 }
             }
             Event::Loop(Loop::Render(args)) => {
-                if resolution != args.window_size {
+                fn fuzzy_eq(resolution: [f64; 2], window_size: [f64; 2]) -> bool {
+                    fn fuzzy_eq(f1: f64, f2: f64) -> bool {
+                        (f1 - f2).abs() < f64::EPSILON
+                    }
+                    fuzzy_eq(resolution[0], window_size[0])
+                        && fuzzy_eq(resolution[1], window_size[1])
+                }
+                if !fuzzy_eq(resolution, args.window_size) {
                     info!("Resizing {:?} => {:?}", resolution, args.window_size);
                     resolution = args.window_size;
                     window = WindowSettings::new("shapes", resolution)

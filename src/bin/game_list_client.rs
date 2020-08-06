@@ -1,6 +1,5 @@
 use clap::{App, Arg};
 use log::info;
-use pretty_env_logger;
 use std::{io, net::SocketAddr};
 use tokio_serde::formats::Json;
 
